@@ -1,0 +1,93 @@
+# OpenTelemetry Collector configuration for macOS host telemetry.
+# Collects host metrics and system logs, exports to HyperDX via OTLP.
+
+receivers:
+  hostmetrics:
+    collection_interval: 15s
+    scrapers:
+      cpu:
+      memory:
+      disk:
+      filesystem:
+        exclude_mount_points:
+          mount_points: ["/dev", "/dev/*", "/System/Volumes/*"]
+          match_type: regexp
+        exclude_fs_types:
+          fs_types: ["devfs", "autofs", "map"]
+          match_type: strict
+      load:
+      network:
+      paging:
+      processes:
+
+  filelog:
+    include:
+      - /var/log/system.log
+      - /var/log/install.log
+    start_at: end
+    operators:
+      - type: regex_parser
+        regex: '^(?P<timestamp>\w+\s+\d+\s+\d+:\d+:\d+)\s+(?P<hostname>\S+)\s+(?P<process>[^\[]+)\[(?P<pid>\d+)\](?:\s+\((?P<sender>[^)]+)\))?:\s+(?P<message>.*)$'
+        timestamp:
+          parse_from: attributes.timestamp
+          layout: '%b %d %H:%M:%S'
+        severity:
+          parse_from: attributes.message
+          mapping:
+            error: ["error", "Error", "ERROR", "fatal", "Fatal", "FATAL", "panic"]
+            warn: ["warn", "Warn", "WARN", "warning", "Warning", "WARNING"]
+            info: ["info", "Info", "INFO", "notice", "Notice"]
+            debug: ["debug", "Debug", "DEBUG"]
+
+processors:
+  resourcedetection:
+    detectors: [system]
+    system:
+      hostname_sources: ["os"]
+      resource_attributes:
+        host.name:
+          enabled: true
+        os.type:
+          enabled: true
+        host.arch:
+          enabled: true
+
+  resource:
+    attributes:
+      - key: service.name
+        value: "macos-host-telemetry"
+        action: upsert
+      - key: deployment.environment
+        value: "local"
+        action: upsert
+
+  batch:
+    send_batch_size: 1024
+    timeout: 5s
+
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 256
+    spike_limit_mib: 64
+
+exporters:
+  otlp/grpc:
+    endpoint: "localhost:4317"
+    tls:
+      insecure: true
+
+extensions:
+  health_check:
+    endpoint: "0.0.0.0:13134"
+
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics:
+      receivers: [hostmetrics]
+      processors: [memory_limiter, resourcedetection, resource, batch]
+      exporters: [otlp/grpc]
+    logs:
+      receivers: [filelog]
+      processors: [memory_limiter, resourcedetection, resource, batch]
+      exporters: [otlp/grpc]

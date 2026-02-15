@@ -1,0 +1,128 @@
+{
+    "name": "LLM Cost Tracking",
+    "tags": ["llm", "cost", "pre-built"],
+    "tiles": [
+        {
+            "id": "total-cost-usd",
+            "x": 0, "y": 0, "w": 4, "h": 2,
+            "config": {
+                "name": "Total Cost (USD)",
+                "source": "{{TRACES_SOURCE_ID}}",
+                "select": [{
+                    "aggFn": "sum",
+                    "aggCondition": "",
+                    "aggConditionLanguage": "sql",
+                    "valueExpression": "_number_attributes['gen_ai.usage.input_tokens'] * 0.000003 + _number_attributes['gen_ai.usage.output_tokens'] * 0.000015"
+                }],
+                "where": "_string_attributes['gen_ai.request.model'] != '' AND type = 'span'",
+                "whereLanguage": "sql",
+                "displayType": "number",
+                "granularity": "auto",
+                "numberFormat": {
+                    "factor": 1,
+                    "output": "number",
+                    "mantissa": 4,
+                    "thousandSeparated": true,
+                    "average": false,
+                    "decimalBytes": false
+                }
+            }
+        },
+        {
+            "id": "avg-cost-per-call",
+            "x": 4, "y": 0, "w": 4, "h": 2,
+            "config": {
+                "name": "Avg Cost per Call (USD)",
+                "source": "{{TRACES_SOURCE_ID}}",
+                "select": [{
+                    "aggFn": "avg",
+                    "aggCondition": "",
+                    "aggConditionLanguage": "sql",
+                    "valueExpression": "_number_attributes['gen_ai.usage.input_tokens'] * 0.000003 + _number_attributes['gen_ai.usage.output_tokens'] * 0.000015"
+                }],
+                "where": "_string_attributes['gen_ai.request.model'] != '' AND type = 'span'",
+                "whereLanguage": "sql",
+                "displayType": "number",
+                "granularity": "auto",
+                "numberFormat": {
+                    "factor": 1,
+                    "output": "number",
+                    "mantissa": 6,
+                    "thousandSeparated": true,
+                    "average": false,
+                    "decimalBytes": false
+                }
+            }
+        },
+        {
+            "id": "total-llm-requests-cost",
+            "x": 8, "y": 0, "w": 4, "h": 2,
+            "config": {
+                "name": "Total LLM Requests",
+                "source": "{{TRACES_SOURCE_ID}}",
+                "select": [{
+                    "aggFn": "count",
+                    "aggCondition": "",
+                    "aggConditionLanguage": "sql",
+                    "valueExpression": ""
+                }],
+                "where": "_string_attributes['gen_ai.request.model'] != '' AND type = 'span'",
+                "whereLanguage": "sql",
+                "displayType": "number",
+                "granularity": "auto",
+                "numberFormat": {
+                    "factor": 1,
+                    "output": "number",
+                    "mantissa": 0,
+                    "thousandSeparated": true,
+                    "average": false,
+                    "decimalBytes": false
+                }
+            }
+        },
+        {
+            "id": "cost-over-time",
+            "x": 0, "y": 2, "w": 12, "h": 3,
+            "config": {
+                "name": "Cost Over Time (USD)",
+                "source": "{{TRACES_SOURCE_ID}}",
+                "select": [{
+                    "aggFn": "sum",
+                    "aggCondition": "",
+                    "aggConditionLanguage": "sql",
+                    "valueExpression": "_number_attributes['gen_ai.usage.input_tokens'] * 0.000003 + _number_attributes['gen_ai.usage.output_tokens'] * 0.000015"
+                }],
+                "where": "_string_attributes['gen_ai.request.model'] != '' AND type = 'span'",
+                "whereLanguage": "sql",
+                "displayType": "line",
+                "granularity": "auto"
+            }
+        },
+        {
+            "id": "input-vs-output-cost",
+            "x": 0, "y": 5, "w": 12, "h": 3,
+            "config": {
+                "name": "Input vs Output Cost Over Time (USD)",
+                "source": "{{TRACES_SOURCE_ID}}",
+                "select": [
+                    {
+                        "aggFn": "sum",
+                        "aggCondition": "",
+                        "aggConditionLanguage": "sql",
+                        "valueExpression": "_number_attributes['gen_ai.usage.input_tokens'] * 0.000003"
+                    },
+                    {
+                        "aggFn": "sum",
+                        "aggCondition": "",
+                        "aggConditionLanguage": "sql",
+                        "valueExpression": "_number_attributes['gen_ai.usage.output_tokens'] * 0.000015"
+                    }
+                ],
+                "where": "_string_attributes['gen_ai.request.model'] != '' AND type = 'span'",
+                "whereLanguage": "sql",
+                "displayType": "stacked_bar",
+                "granularity": "auto"
+            }
+        }
+    ]
+}

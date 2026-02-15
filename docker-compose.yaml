@@ -1,0 +1,21 @@
+services:
+  hyperdx:
+    image: ghcr.io/hyperdxio/hyperdx-local:latest
+    # Alternatives:
+    #   ghcr.io/hyperdxio/hyperdx-local:2-beta  (v2 ClickStack, no API/MongoDB)
+    #   docker.hyperdx.io/hyperdx/hyperdx-local:2-beta
+    container_name: hyperdx-local
+    ports:
+      - "8080:8080"   # HyperDX UI
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8123:8123"   # ClickHouse HTTP (for direct SQL queries)
+      - "8000:8000"   # HyperDX Internal API
+    restart: unless-stopped
+    volumes:
+      - hyperdx-data:/var/lib/clickhouse
+    environment:
+      - HYPERDX_LOG_LEVEL=info
+
+volumes:
+  hyperdx-data:
