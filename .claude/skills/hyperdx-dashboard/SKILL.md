@@ -9,7 +9,7 @@ description: Generates, validates, and deploys HyperDX dashboard definitions via
 
 1. **Discover data** — Run `.venv/bin/python query_clickhouse.py --summary --attributes` to see available services, span names, and attributes in ClickHouse.
 2. **Generate JSON** — Build the dashboard definition following the Chart Format below.
-3. **Validate** — Check every chart against the Critical Rules section.
+3. **Validate** — For every chart, print the Post-Generation Validation Checklist from `references/rules.md` with `[ok]` or `[FAIL]` for each item. Fix all `[FAIL]` items before proceeding. Do NOT skip this step.
 4. **Deploy** — Use Python `requests` to POST to the HyperDX internal API on port 8000.
 5. **Verify** — Open HyperDX UI at `http://localhost:8080/dashboards` and confirm charts render.
 
@@ -95,23 +95,36 @@ Key points:
 | 2 | `field` uses HyperDX names (e.g., `system.cpu.percent`) | ClickHouse expressions like `_number_attributes['...']` won't work |
 | 3 | Top-level array is `charts`, not `tiles` | Dashboard shows empty |
 | 4 | Series `type` must be: `time`, `number`, `table`, `histogram`, `search`, `markdown` | Chart renders blank |
-| 5 | `aggFn` supports: count, sum, avg, min, max, p50, p90, p95, p99, count_distinct, last_value | Invalid values fail silently |
+| 5 | `aggFn` must be valid | **Standard:** `count`, `sum`, `avg`, `min`, `max`, `p50`, `p90`, `p95`, `p99`, `count_distinct`, `avg_rate`, `sum_rate`, `min_rate`, `max_rate`, `p50_rate`, `p90_rate`, `p95_rate`, `p99_rate`. **Internal only:** `last_value`, `count_per_sec`, `count_per_min`, `count_per_hour`. Invalid values fail silently. |
 | 6 | `numberFormat` required on `type: "number"` series | KPI tiles display raw |
 | 7 | Grid is 12 columns wide; `x + w <= 12` | Tiles overlap or overflow |
 | 8 | `field` is omitted (or absent) for `count` aggFn | Including a field with count may error |
 | 9 | `groupBy` is an array (e.g., `["span_name"]`) | Works for time charts to split by field |
 | 10 | Deploy via API only, never MongoDB direct insert | Wrong team ID → dashboard invisible |
 | 11 | `duration` is the field name for span duration (ms) | Not `_duration` |
+| 12 | No `source`, `displayType`, `whereLanguage`, `granularity`, `config`, `select` | Old MongoDB format fields — silently ignored or cause errors |
+| 13 | All series in a chart share identical `type` and `groupBy` | Mixed types or mismatched groupBy silently drops data |
+| 14 | Always emit: `seriesReturnType: "column"`, `table: "logs"`, `groupBy: []` on time series, `query: ""` at dashboard level | Omitting creates non-deterministic API behavior |
+| 15 | `h: 2` for KPI (`type: "number"`), `h: 3` for all others | Inconsistent heights break row alignment |
+| 16 | Chart `id`: descriptive kebab-case, max 36 chars | Omitting generates UUIDs — unreadable in debugging |
 
 ## Lucene Where Syntax
 
 ```
-service:macos-system-monitor                    # Filter by service
-span_name:cpu-load-sample                       # Filter by span name
+service:macos-system-monitor                    # Exact match
+span_name:cpu-load-sample                       # Exact match
 gen_ai.request.model:*                          # Field exists (any value)
-level:error                                     # Filter by level
+level:error                                     # Exact match
 span_name:cpu-load-sample service:my-service    # AND (space-separated)
+span_name:cpu-load-sample OR span_name:memory   # OR (explicit keyword)
+NOT level:error                                 # Negation
+-level:error                                    # Negation (shorthand)
+body:"connection refused"                       # Exact phrase
+duration:>1000                                  # Comparison operators
+service:macos-*                                 # Wildcard
 ```
+
+Precedence: `NOT` > `AND` (space) > `OR`. See `references/chart-format.md` for full syntax reference.
 
 ## HyperDX Field Names
 
@@ -157,6 +170,26 @@ dashboard = {
 resp = requests.post(f'{API}/dashboards', headers=HEADERS, json=dashboard)
 data = resp.json()['data']
 print(f"URL: http://localhost:8080/dashboards/{data['_id']}")
+```
+
+### Deploy Error Handling
+
+Always check `resp.status_code` after the POST:
+
+| Status | Cause | Fix |
+|--------|-------|-----|
+| `401` | Bad or expired access key | Re-fetch token: `docker exec hyperdx-local mongo --quiet --eval 'db=db.getSiblingDB("hyperdx"); print(db.users.findOne({}).accessKey)'` |
+| `400` | Malformed JSON (missing required fields, invalid types) | Re-validate against the checklist in `references/rules.md` |
+| `500` | Internal HyperDX/container error | Check container logs: `docker logs hyperdx-local --tail 50` |
+| Connection refused | Container not running | Start it: `docker compose up -d` |
+
+```python
+resp = requests.post(f'{API}/dashboards', headers=HEADERS, json=dashboard)
+if resp.status_code != 200:
+    print(f"Deploy failed ({resp.status_code}): {resp.text}")
+else:
+    data = resp.json()['data']
+    print(f"URL: http://localhost:8080/dashboards/{data['_id']}")
 ```
 
 ## Common Chart Patterns
