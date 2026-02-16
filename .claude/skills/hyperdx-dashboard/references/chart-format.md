@@ -57,7 +57,7 @@ Content-Type: application/json
 | `w` | number | Yes | Width in grid units, 1–12 |
 | `h` | number | Yes | Height in grid units, typically 2 (KPI) or 3 (chart) |
 | `series` | array | Yes | 1+ series objects (see below) |
-| `seriesReturnType` | string | No | `"column"` (default) or `"ratio"` |
+| `seriesReturnType` | string | Yes | Always `"column"`. Required by this skill for determinism. |
 
 ## Series Fields
 
@@ -74,9 +74,92 @@ Content-Type: application/json
 | `fields` | array | No | Column list (search type only) |
 | `content` | string | No | Markdown text (markdown type only) |
 
+## Mandatory Fields by Series Type
+
+For each series type, emit **exactly** these fields — no more, no less (except `field` which is omitted for `count` aggFn).
+
+### `time` series
+```json
+{
+  "type": "time",
+  "table": "logs",
+  "aggFn": "avg",
+  "field": "duration",
+  "where": "span_name:my-span",
+  "groupBy": []
+}
+```
+**Required:** `type`, `table`, `aggFn`, `where`, `groupBy`. Also `field` unless aggFn is `count`.
+
+### `number` series (KPI)
+```json
+{
+  "type": "number",
+  "table": "logs",
+  "aggFn": "avg",
+  "field": "duration",
+  "where": "span_name:my-span",
+  "numberFormat": {
+    "output": "number",
+    "mantissa": 2,
+    "factor": 1,
+    "thousandSeparated": true,
+    "average": false,
+    "decimalBytes": false
+  }
+}
+```
+**Required:** `type`, `table`, `aggFn`, `where`, `numberFormat`. Also `field` unless aggFn is `count`. No `groupBy`.
+
+### `table` series
+```json
+{
+  "type": "table",
+  "table": "logs",
+  "aggFn": "count",
+  "where": "service:my-service",
+  "groupBy": ["span_name"],
+  "sortOrder": "desc"
+}
+```
+**Required:** `type`, `table`, `aggFn`, `where`, `groupBy`, `sortOrder`. Also `field` unless aggFn is `count`.
+
+### `histogram` series
+```json
+{
+  "type": "histogram",
+  "table": "logs",
+  "field": "duration",
+  "where": "service:my-service"
+}
+```
+**Required:** `type`, `table`, `field`, `where`. No `aggFn`, no `groupBy`.
+
+### `search` series
+```json
+{
+  "type": "search",
+  "table": "logs",
+  "where": "level:error",
+  "fields": ["service", "span_name", "body", "duration"]
+}
+```
+**Required:** `type`, `table`, `where`, `fields`. No `aggFn`, no `groupBy`.
+
+### `markdown` series
+```json
+{
+  "type": "markdown",
+  "content": "## Section Title\nDescription text here."
+}
+```
+**Required:** `type`, `content` only. No `table`, `aggFn`, `field`, `where`, or `groupBy`.
+
 ## Valid `aggFn` Values
 
-`count`, `sum`, `avg`, `min`, `max`, `p50`, `p90`, `p95`, `p99`, `count_distinct`, `last_value`, `count_per_sec`, `count_per_min`, `count_per_hour`, `avg_rate`, `min_rate`, `max_rate`, `p50_rate`, `p90_rate`, `p95_rate`, `p99_rate`
+**Standard (public + internal):** `count`, `sum`, `avg`, `min`, `max`, `p50`, `p90`, `p95`, `p99`, `count_distinct`, `avg_rate`, `sum_rate`, `min_rate`, `max_rate`, `p50_rate`, `p90_rate`, `p95_rate`, `p99_rate`
+
+**Internal API only:** `last_value`, `count_per_sec`, `count_per_min`, `count_per_hour`
 
 ## numberFormat Object
 
@@ -91,15 +174,59 @@ Required for `type: "number"` (KPI tiles).
 | `average` | boolean | Usually `false` |
 | `decimalBytes` | boolean | Usually `false` |
 
+## numberFormat Templates
+
+Use these canonical templates verbatim for KPI (`type: "number"`) charts. Always include all 6 fields.
+
+### Integer Count
+```json
+"numberFormat": {"output": "number", "mantissa": 0, "factor": 1, "thousandSeparated": true, "average": false, "decimalBytes": false}
+```
+Use for: request counts, token totals, event counts.
+
+### Latency ms
+```json
+"numberFormat": {"output": "number", "mantissa": 2, "factor": 1, "thousandSeparated": true, "average": false, "decimalBytes": false}
+```
+Use for: avg/p50/p90/p95/p99 latency, duration metrics.
+
+### Percentage
+```json
+"numberFormat": {"output": "percent", "mantissa": 1, "factor": 1, "thousandSeparated": true, "average": false, "decimalBytes": false}
+```
+Use for: CPU %, memory %, error rates (when pre-computed as 0–1 ratio).
+
+### Bytes
+```json
+"numberFormat": {"output": "byte", "mantissa": 0, "factor": 1, "thousandSeparated": true, "average": false, "decimalBytes": true}
+```
+Use for: memory usage, disk I/O, network bytes.
+
+### Decimal
+```json
+"numberFormat": {"output": "number", "mantissa": 2, "factor": 1, "thousandSeparated": true, "average": false, "decimalBytes": false}
+```
+Use for: load averages, scores, ratios, any decimal metric.
+
 ## Lucene Where Syntax
 
 ```
 service:macos-system-monitor                    # Exact match
 span_name:cpu-load-sample                       # Exact match
-gen_ai.request.model:*                          # Field exists
+gen_ai.request.model:*                          # Field exists (any value)
 level:error                                     # Exact match
 span_name:cpu-load-sample service:my-service    # AND (space-separated)
+span_name:cpu-load-sample OR span_name:memory   # OR (explicit keyword)
+NOT level:error                                 # NOT (negation prefix)
+-level:error                                    # Negation (shorthand for NOT)
+body:"connection refused"                       # Quoted string (exact phrase)
+duration:>1000                                  # Greater than
+duration:>=500                                  # Greater than or equal
+duration:<100                                   # Less than
+service:macos-*                                 # Wildcard (partial match)
 ```
+
+**Precedence:** `NOT` binds tightest, then `AND` (space), then `OR`. Use parentheses for clarity: `(service:a OR service:b) NOT level:error`.
 
 ## HyperDX Field Names
 
@@ -128,6 +255,8 @@ Multiple items in the `series` array create multi-series charts (e.g., two lines
   {"type": "time", "table": "logs", "aggFn": "avg", "field": "system.load.15m", "where": "...", "groupBy": []}
 ]
 ```
+
+> **Constraint:** All series within a single chart MUST share identical `type` and identical `groupBy` arrays. Mixed types or mismatched `groupBy` silently drops data.
 
 ## Grid Layout Patterns
 

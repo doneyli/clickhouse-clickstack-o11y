@@ -29,7 +29,7 @@ All examples use the HyperDX Internal API format (`charts`/`series`), deployed v
 }
 ```
 
-Note: No `field` for `count` aggFn.
+Note: No `field` for `count` aggFn. Uses the **Integer Count** numberFormat template.
 
 ### 2. KPI Sum Chart
 
@@ -83,7 +83,7 @@ Note: No `field` for `count` aggFn.
 }
 ```
 
-Note: Use `duration` (HyperDX field name), NOT `_duration`.
+Note: Use `duration` (HyperDX field name), NOT `_duration`. Uses the **Latency ms** numberFormat template.
 
 ### 4. Time-Series Chart (Count Over Time)
 
@@ -178,6 +178,65 @@ Multiple items in `series` array = multiple lines on the same chart.
   "seriesReturnType": "column"
 }
 ```
+
+Note on Example 7: Uses the **Percentage** numberFormat template.
+
+### 8. Table Chart (Top Spans by Count)
+
+```json
+{
+  "id": "top-spans-by-count",
+  "name": "Top Spans by Count",
+  "x": 0, "y": 8, "w": 6, "h": 3,
+  "series": [{
+    "type": "table",
+    "table": "logs",
+    "aggFn": "count",
+    "where": "service:text-to-sql-service",
+    "groupBy": ["span_name"],
+    "sortOrder": "desc"
+  }],
+  "seriesReturnType": "column"
+}
+```
+
+Note: `table` type requires `groupBy` and `sortOrder`. No `field` needed for `count` aggFn.
+
+### 9. Search Chart (Recent Error Events)
+
+```json
+{
+  "id": "recent-errors",
+  "name": "Recent Errors",
+  "x": 6, "y": 8, "w": 6, "h": 3,
+  "series": [{
+    "type": "search",
+    "table": "logs",
+    "where": "level:error",
+    "fields": ["service", "span_name", "body", "duration"]
+  }],
+  "seriesReturnType": "column"
+}
+```
+
+Note: `search` type requires `fields` array. No `aggFn` or `groupBy`.
+
+### 10. Markdown Chart (Section Divider)
+
+```json
+{
+  "id": "section-system-metrics",
+  "name": "Section Header",
+  "x": 0, "y": 11, "w": 12, "h": 3,
+  "series": [{
+    "type": "markdown",
+    "content": "## System Metrics\nCPU, memory, and disk telemetry from the macOS host monitor."
+  }],
+  "seriesReturnType": "column"
+}
+```
+
+Note: `markdown` type requires only `type` and `content`. No `table`, `aggFn`, `field`, or `where`.
 
 ## Full Dashboard Example — LLM Observability
 
