@@ -1,11 +1,11 @@
 ---           
   Demo Order                                                      
                                                                   
-  1. Pre-flight  
-                                                                  
-  docker compose up -d                                          
-  python query_clickhouse.py --summary   # show audience the data
-  exists
+  1. Pre-flight
+
+  docker compose up -d
+  python stream_data.py --cycle 60 &     # stream live data in the background
+  python query_clickhouse.py --summary   # show audience the data exists
 
 
   2. Basic — Auto-Discovery (paste into fresh session)

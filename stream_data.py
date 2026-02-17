@@ -250,10 +250,11 @@ def main():
                 if shutdown:
                     break
 
-                # Compute per-batch offset using the actual payload timestamp
-                # so outlier batches (e.g., near-epoch) get shifted correctly to now
-                desired_ts_ns = cycle_start_ns + batch_offset_ns
-                ts_offset_ns = desired_ts_ns - orig_ts
+                # Compress timestamps to fit within the cycle duration,
+                # and use clamped sort_ts as baseline to avoid outlier blowup
+                compressed_offset_ns = int(batch_offset_ns * compression_ratio)
+                desired_ts_ns = cycle_start_ns + compressed_offset_ns
+                ts_offset_ns = desired_ts_ns - sort_ts
 
                 # Rewrite timestamps and send
                 rewritten = rewrite_timestamps(payload, ts_offset_ns)
