@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import warnings
+warnings.filterwarnings("ignore")
 """
 Utility to query ClickHouse directly for inspecting ingested data.
 
@@ -7,6 +9,16 @@ Usage:
     python query_clickhouse.py --summary      # Data overview
     python query_clickhouse.py --attributes   # All attribute keys
     python query_clickhouse.py --services     # All services
+
+    # For queries with special chars (quotes, !=, !), use stdin to avoid shell escaping:
+    python query_clickhouse.py --query - <<'SQL'
+    SELECT _string_attributes['key'] as k, count() as cnt
+    FROM log_stream WHERE _string_attributes['key'] != ''
+    GROUP BY k
+    SQL
+
+    # Or pipe directly:
+    echo "SELECT 1" | python query_clickhouse.py
 """
 
 import argparse
@@ -194,14 +206,27 @@ def show_services():
 
 def main():
     parser = argparse.ArgumentParser(description="Query ClickHouse for data inspection")
-    parser.add_argument("--query", type=str, help="Run a custom SQL query")
+    parser.add_argument("--query", type=str, nargs="?", const="-",
+                        help="Run a custom SQL query (use '-' or omit value to read from stdin)")
     parser.add_argument("--summary", action="store_true", help="Show data overview")
     parser.add_argument("--attributes", action="store_true", help="Show all attribute keys")
     parser.add_argument("--services", action="store_true", help="Show all services")
     args = parser.parse_args()
 
-    if args.query:
-        run_query(args.query)
+    if args.query is not None:
+        query = args.query
+        if query == "-" or (query == "-" and not sys.stdin.isatty()):
+            query = sys.stdin.read().strip()
+            if not query:
+                print("ERROR: No query provided on stdin", file=sys.stderr)
+                sys.exit(1)
+        run_query(query)
+    elif not sys.stdin.isatty():
+        query = sys.stdin.read().strip()
+        if query:
+            run_query(query)
+        else:
+            show_summary()
     elif args.summary:
         show_summary()
     elif args.attributes:
