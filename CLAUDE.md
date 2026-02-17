@@ -51,8 +51,8 @@ Both endpoints work locally and read/write the same dashboards:
 
 | Endpoint | Format differences |
 |---|---|
-| `POST http://localhost:8000/dashboards` (internal, recommended) | Uses `table: "logs"`, `seriesReturnType: "column"` |
-| `POST http://localhost:8000/api/v1/dashboards` (public, matches official docs) | Uses `dataSource: "events"`, `asRatio: false` |
+| `POST http://localhost:8000/api/v1/dashboards` (public, recommended) | Uses `table: "logs"` (accepted, auto-converts to `dataSource`), `asRatio: false` |
+| `POST http://localhost:8000/dashboards` (internal) | Uses `table: "logs"`, `seriesReturnType: "column"` |
 
 **Auth:** `Authorization: Bearer {ACCESS_KEY}` — get token:
 ```bash
@@ -62,7 +62,7 @@ docker exec hyperdx-local mongo --quiet --eval \
 
 **NEVER insert dashboards directly into MongoDB** — direct inserts assign the wrong team ID and dashboards silently won't appear in the UI.
 
-### Dashboard JSON format (internal API)
+### Dashboard JSON format (public API)
 
 ```json
 {
@@ -80,7 +80,7 @@ docker exec hyperdx-local mongo --quiet --eval \
         "where": "service:my-service",
         "groupBy": []
       }],
-      "seriesReturnType": "column"
+      "asRatio": false
     }
   ]
 }
@@ -94,7 +94,7 @@ Key rules:
 - **`numberFormat` required** on `type: "number"` KPI tiles
 - **Omit `field`** for `count` aggFn
 - **Grid is 12 columns wide** — `x + w <= 12`
-- Valid `aggFn`: count, count_rate, sum, avg, min, max, p50, p90, p95, p99, count_distinct, last_value, count_per_sec, count_per_min, count_per_hour, plus `_rate` variants
+- Valid `aggFn`: count, count_rate, sum, avg, min, max, p50, p90, p95, p99, count_distinct, plus `_rate` variants
 - Valid series `type`: time, number, table, histogram, search, markdown
 - **For metrics:** use `table: "metrics"`, add `metricDataType` (`"Gauge"`, `"Sum"`, `"Histogram"`, `"Summary"`), and `field` in `"name - DataType"` format (e.g., `"system.cpu.utilization - Gauge"`)
 

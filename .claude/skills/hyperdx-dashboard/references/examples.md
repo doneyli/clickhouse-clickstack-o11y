@@ -1,6 +1,6 @@
 # Working Dashboard Examples
 
-All examples use the HyperDX Internal API format (`charts`/`series`), deployed via `POST http://localhost:8000/dashboards`.
+All examples use the HyperDX Public API format (`charts`/`series`), deployed via `POST http://localhost:8000/api/v1/dashboards`.
 
 ## Chart Patterns
 
@@ -25,7 +25,7 @@ All examples use the HyperDX Internal API format (`charts`/`series`), deployed v
       "decimalBytes": false
     }
   }],
-  "seriesReturnType": "column"
+  "asRatio": false
 }
 ```
 
@@ -53,7 +53,7 @@ Note: No `field` for `count` aggFn. Uses the **Integer Count** numberFormat temp
       "decimalBytes": false
     }
   }],
-  "seriesReturnType": "column"
+  "asRatio": false
 }
 ```
 
@@ -79,7 +79,7 @@ Note: No `field` for `count` aggFn. Uses the **Integer Count** numberFormat temp
       "decimalBytes": false
     }
   }],
-  "seriesReturnType": "column"
+  "asRatio": false
 }
 ```
 
@@ -99,7 +99,7 @@ Note: Use `duration` (HyperDX field name), NOT `_duration`. Uses the **Latency m
     "where": "service:my-service",
     "groupBy": []
   }],
-  "seriesReturnType": "column"
+  "asRatio": false
 }
 ```
 
@@ -128,7 +128,7 @@ Note: Use `duration` (HyperDX field name), NOT `_duration`. Uses the **Latency m
       "groupBy": []
     }
   ],
-  "seriesReturnType": "column"
+  "asRatio": false
 }
 ```
 
@@ -149,7 +149,7 @@ Multiple items in `series` array = multiple lines on the same chart.
     "where": "",
     "groupBy": ["service"]
   }],
-  "seriesReturnType": "column"
+  "asRatio": false
 }
 ```
 
@@ -175,7 +175,7 @@ Multiple items in `series` array = multiple lines on the same chart.
       "decimalBytes": false
     }
   }],
-  "seriesReturnType": "column"
+  "asRatio": false
 }
 ```
 
@@ -194,7 +194,7 @@ Multiple items in `series` array = multiple lines on the same chart.
     "groupBy": ["span_name"],
     "sortOrder": "desc"
   }],
-  "seriesReturnType": "column"
+  "asRatio": false
 }
 ```
 
@@ -213,7 +213,7 @@ Note: `table` type requires `groupBy` and `sortOrder`. No `field` needed for `co
     "where": "level:error",
     "fields": ["service", "span_name", "body", "duration"]
   }],
-  "seriesReturnType": "column"
+  "asRatio": false
 }
 ```
 
@@ -230,7 +230,7 @@ Note: `search` type requires `fields` array. No `aggFn` or `groupBy`.
     "type": "markdown",
     "content": "## Section Title\nDescription text here."
   }],
-  "seriesReturnType": "column"
+  "asRatio": false
 }
 ```
 
@@ -252,7 +252,7 @@ Note: `markdown` type requires only `type` and `content`. No `table`, `aggFn`, `
     "where": "",
     "groupBy": []
   }],
-  "seriesReturnType": "column"
+  "asRatio": false
 }
 ```
 
@@ -281,7 +281,7 @@ Note: Metrics series require `table: "metrics"`, `metricDataType`, and `field` i
       "decimalBytes": true
     }
   }],
-  "seriesReturnType": "column"
+  "asRatio": false
 }
 ```
 
@@ -303,9 +303,9 @@ dashboard = {
     'charts': [ ... ]
 }
 
-resp = requests.post(f'{API}/dashboards', headers=HEADERS, json=dashboard)
+resp = requests.post(f'{API}/api/v1/dashboards', headers=HEADERS, json=dashboard)
 data = resp.json()['data']
-print(f"URL: http://localhost:8080/dashboards/{data['_id']}")
+print(f"URL: http://localhost:8080/dashboards/{data['id']}")
 ```
 
 ## Key Differences from Old MongoDB Format

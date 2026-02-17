@@ -2,10 +2,16 @@
 """Create System Metrics Overview dashboard"""
 
 import requests
-import json
+import subprocess
+import sys
+
+# Get access token
+TOKEN = subprocess.check_output([
+    'docker', 'exec', 'hyperdx-local', 'mongo', '--quiet', '--eval',
+    'db=db.getSiblingDB("hyperdx"); print(db.users.findOne({}).accessKey)'
+]).decode().strip()
 
 API = 'http://localhost:8000'
-TOKEN = '6990e12abb8303cd5571903f0000000000000000'
 HEADERS = {'Authorization': f'Bearer {TOKEN}', 'Content-Type': 'application/json'}
 
 dashboard = {
@@ -33,7 +39,7 @@ dashboard = {
                     "average": False
                 }
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
         {
             "id": "memory-utilization-kpi",
@@ -54,7 +60,7 @@ dashboard = {
                     "average": False
                 }
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
         {
             "id": "container-cpu-kpi",
@@ -75,7 +81,7 @@ dashboard = {
                     "average": False
                 }
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
         {
             "id": "container-memory-kpi",
@@ -96,7 +102,7 @@ dashboard = {
                     "average": False
                 }
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
 
         # Second row: 2 time series (w:6, h:4)
@@ -113,7 +119,7 @@ dashboard = {
                 "where": "",
                 "groupBy": []
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
         {
             "id": "memory-utilization-over-time",
@@ -128,7 +134,7 @@ dashboard = {
                 "where": "",
                 "groupBy": []
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
 
         # Bottom row: 2 time series (w:6, h:4)
@@ -145,7 +151,7 @@ dashboard = {
                 "where": "",
                 "groupBy": []
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
         {
             "id": "network-io-over-time",
@@ -160,7 +166,7 @@ dashboard = {
                 "where": "",
                 "groupBy": []
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         }
     ]
 }
@@ -182,7 +188,7 @@ for i, chart in enumerate(dashboard['charts'], 1):
         ("type is valid", series['type'] in ['time', 'number']),
         ("numberFormat present (if type=number)", series['type'] != 'number' or 'numberFormat' in series),
         ("x + w <= 12", chart['x'] + chart['w'] <= 12),
-        ("seriesReturnType is 'column'", chart['seriesReturnType'] == 'column'),
+        ("asRatio is False", chart['asRatio'] == False),
         ("groupBy is array", isinstance(series.get('groupBy', []), list)),
         ("h is 2 for KPI, >=3 for others", (series['type'] == 'number' and chart['h'] == 2) or (series['type'] != 'number' and chart['h'] >= 3)),
         ("chart id is kebab-case", '-' in chart['id']),
@@ -198,14 +204,14 @@ for i, chart in enumerate(dashboard['charts'], 1):
 
 print("\n=== DEPLOYING DASHBOARD ===\n")
 
-resp = requests.post(f'{API}/dashboards', headers=HEADERS, json=dashboard)
+resp = requests.post(f'{API}/api/v1/dashboards', headers=HEADERS, json=dashboard)
 
 if resp.status_code != 200:
     print(f"❌ Deploy failed ({resp.status_code}): {resp.text}")
     exit(1)
 
 data = resp.json()['data']
-dashboard_id = data['_id']
+dashboard_id = data['id']
 print(f"✅ Dashboard created successfully!")
 print(f"📊 URL: http://localhost:8080/dashboards/{dashboard_id}")
 print(f"🆔 ID: {dashboard_id}")

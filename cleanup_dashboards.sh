@@ -20,7 +20,7 @@ if [[ -z "$TOKEN" ]]; then
 fi
 
 # Fetch all dashboards
-DASHBOARDS=$(curl -s -H "Authorization: Bearer $TOKEN" "$API_URL/dashboards")
+DASHBOARDS=$(curl -s -H "Authorization: Bearer $TOKEN" "$API_URL/api/v1/dashboards")
 
 # Parse dashboard IDs and names
 COUNT=$(echo "$DASHBOARDS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('data',[])))" 2>/dev/null || echo "0")
@@ -36,7 +36,7 @@ echo "$DASHBOARDS" | python3 -c "
 import sys, json
 data = json.load(sys.stdin).get('data', [])
 for i, d in enumerate(data, 1):
-    print(f'  {i}. {d.get(\"name\", \"(unnamed)\")}  [id: {d[\"_id\"]}]')
+    print(f'  {i}. {d.get(\"name\", \"(unnamed)\")}  [id: {d[\"id\"]}]')
 "
 echo ""
 
@@ -55,19 +55,19 @@ echo "$DASHBOARDS" | python3 -c "
 import sys, json
 data = json.load(sys.stdin).get('data', [])
 for d in data:
-    print(d['_id'])
+    print(d['id'])
 " | while read -r id; do
   name=$(echo "$DASHBOARDS" | python3 -c "
 import sys, json
 data = json.load(sys.stdin).get('data', [])
 for d in data:
-    if d['_id'] == '$id':
+    if d['id'] == '$id':
         print(d.get('name', '(unnamed)'))
         break
 ")
   status=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
     -H "Authorization: Bearer $TOKEN" \
-    "$API_URL/dashboards/$id")
+    "$API_URL/api/v1/dashboards/$id")
   if [[ "$status" == "200" ]]; then
     echo "  Deleted: $name"
   else
