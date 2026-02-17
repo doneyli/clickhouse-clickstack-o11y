@@ -2,10 +2,16 @@
 """Create System Metrics Overview dashboard"""
 
 import requests
-import json
+import subprocess
+import sys
+
+# Get access token
+TOKEN = subprocess.check_output([
+    'docker', 'exec', 'hyperdx-local', 'mongo', '--quiet', '--eval',
+    'db=db.getSiblingDB("hyperdx"); print(db.users.findOne({}).accessKey)'
+]).decode().strip()
 
 API = 'http://localhost:8000'
-TOKEN = '6990e12abb8303cd5571903f0000000000000000'
 HEADERS = {'Authorization': f'Bearer {TOKEN}', 'Content-Type': 'application/json'}
 
 dashboard = {
