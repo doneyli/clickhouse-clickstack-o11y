@@ -94,12 +94,13 @@ Key rules:
 - **`numberFormat` required** on `type: "number"` KPI tiles
 - **Omit `field`** for `count` aggFn
 - **Grid is 12 columns wide** — `x + w <= 12`
-- Valid `aggFn`: count, sum, avg, min, max, p50, p90, p95, p99, count_distinct, last_value, count_per_sec, count_per_min, count_per_hour, plus `_rate` variants
+- Valid `aggFn`: count, count_rate, sum, avg, min, max, p50, p90, p95, p99, count_distinct, last_value, count_per_sec, count_per_min, count_per_hour, plus `_rate` variants
 - Valid series `type`: time, number, table, histogram, search, markdown
+- **For metrics:** use `table: "metrics"`, add `metricDataType` (`"Gauge"`, `"Sum"`, `"Histogram"`, `"Summary"`), and `field` in `"name - DataType"` format (e.g., `"system.cpu.utilization - Gauge"`)
 
 ## Critical Gotchas
 
-- **`log_stream` is the only table** — spans, logs, and events all go here.
+- **`log_stream`** stores spans, logs, and events. **`metric_stream`** stores metrics.
 - **`_duration` is already milliseconds** — Float64, no conversion needed.
 - **MongoDB shell is `mongo` not `mongosh`** — HyperDX Local uses legacy shell.
 

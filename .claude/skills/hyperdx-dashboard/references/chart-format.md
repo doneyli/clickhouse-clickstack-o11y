@@ -64,7 +64,7 @@ Content-Type: application/json
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
 | `type` | string | Yes | `time`, `number`, `table`, `histogram`, `search`, `markdown` |
-| `table` | string | Yes* | `"logs"` for traces/spans/logs, `"metrics"` for metrics. Not needed for markdown. |
+| `table` | string | Yes* | `"logs"` for traces/spans/logs, `"metrics"` for metrics. Not needed for markdown. When using `"metrics"`, `metricDataType` is also required and `field` must use `"name - DataType"` format. |
 | `aggFn` | string | Yes* | Aggregation function (see below). Not needed for search/markdown. |
 | `field` | string | No | HyperDX field name to aggregate. Omit for `count`. |
 | `where` | string | No | Lucene query filter (default: empty = match all) |
@@ -73,6 +73,7 @@ Content-Type: application/json
 | `sortOrder` | string | No | `"desc"` or `"asc"` (table type only) |
 | `fields` | array | No | Column list (search type only) |
 | `content` | string | No | Markdown text (markdown type only) |
+| `metricDataType` | string | No* | Required for metrics series (`table: "metrics"`). Valid values: `"Gauge"`, `"Sum"`, `"Histogram"`, `"Summary"`. |
 
 ## Mandatory Fields by Series Type
 
@@ -155,9 +156,44 @@ For each series type, emit **exactly** these fields — no more, no less (except
 ```
 **Required:** `type`, `content` only. No `table`, `aggFn`, `field`, `where`, or `groupBy`.
 
+### Metrics `time` series
+```json
+{
+  "type": "time",
+  "table": "metrics",
+  "aggFn": "avg",
+  "field": "system.cpu.utilization - Gauge",
+  "metricDataType": "Gauge",
+  "where": "",
+  "groupBy": []
+}
+```
+**Required:** `type`, `table` (`"metrics"`), `aggFn`, `field` (in `"name - DataType"` format), `metricDataType`, `where`, `groupBy`. Also `field` is always required for metrics (no bare `count`).
+
+### Metrics `number` series (KPI)
+```json
+{
+  "type": "number",
+  "table": "metrics",
+  "aggFn": "avg",
+  "field": "system.cpu.utilization - Gauge",
+  "metricDataType": "Gauge",
+  "where": "",
+  "numberFormat": {
+    "output": "percent",
+    "mantissa": 1,
+    "factor": 1,
+    "thousandSeparated": true,
+    "average": false,
+    "decimalBytes": false
+  }
+}
+```
+**Required:** `type`, `table` (`"metrics"`), `aggFn`, `field` (in `"name - DataType"` format), `metricDataType`, `where`, `numberFormat`. No `groupBy`.
+
 ## Valid `aggFn` Values
 
-**Standard (public + internal):** `count`, `sum`, `avg`, `min`, `max`, `p50`, `p90`, `p95`, `p99`, `count_distinct`, `avg_rate`, `sum_rate`, `min_rate`, `max_rate`, `p50_rate`, `p90_rate`, `p95_rate`, `p99_rate`
+**Standard (public + internal):** `count`, `count_rate`, `sum`, `avg`, `min`, `max`, `p50`, `p90`, `p95`, `p99`, `count_distinct`, `avg_rate`, `sum_rate`, `min_rate`, `max_rate`, `p50_rate`, `p90_rate`, `p95_rate`, `p99_rate`
 
 **Internal API only:** `last_value`, `count_per_sec`, `count_per_min`, `count_per_hour`
 

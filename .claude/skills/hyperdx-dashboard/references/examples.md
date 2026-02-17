@@ -236,6 +236,57 @@ Note: `search` type requires `fields` array. No `aggFn` or `groupBy`.
 
 Note: `markdown` type requires only `type` and `content`. No `table`, `aggFn`, `field`, or `where`.
 
+### 11. Metrics Time Chart (CPU Utilization)
+
+```json
+{
+  "id": "cpu-utilization-over-time",
+  "name": "CPU Utilization Over Time",
+  "x": 0, "y": 11, "w": 6, "h": 3,
+  "series": [{
+    "type": "time",
+    "table": "metrics",
+    "aggFn": "avg",
+    "field": "system.cpu.utilization - Gauge",
+    "metricDataType": "Gauge",
+    "where": "",
+    "groupBy": []
+  }],
+  "seriesReturnType": "column"
+}
+```
+
+Note: Metrics series require `table: "metrics"`, `metricDataType`, and `field` in `"name - DataType"` format. Discover metric names via `query_clickhouse.py --query "SELECT DISTINCT name, data_type FROM metric_stream"` or the `/metrics/names` API.
+
+### 12. Metrics KPI Chart (Avg Memory Usage)
+
+```json
+{
+  "id": "avg-memory-usage",
+  "name": "Avg Memory Usage",
+  "x": 6, "y": 11, "w": 3, "h": 2,
+  "series": [{
+    "type": "number",
+    "table": "metrics",
+    "aggFn": "avg",
+    "field": "system.memory.usage - Sum",
+    "metricDataType": "Sum",
+    "where": "",
+    "numberFormat": {
+      "output": "byte",
+      "mantissa": 0,
+      "factor": 1,
+      "thousandSeparated": true,
+      "average": false,
+      "decimalBytes": true
+    }
+  }],
+  "seriesReturnType": "column"
+}
+```
+
+Note: Uses **Bytes** numberFormat template. The `metricDataType` value (`"Sum"`) must match the suffix in the `field` name (`"... - Sum"`).
+
 ## Deploy Pattern
 
 ```python

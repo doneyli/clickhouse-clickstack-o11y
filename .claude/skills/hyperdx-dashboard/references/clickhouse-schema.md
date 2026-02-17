@@ -93,6 +93,65 @@ GROUP BY service
 ORDER BY cnt DESC
 ```
 
+## `metric_stream` Table
+
+HyperDX stores metrics in a separate `metric_stream` table. Dashboard charts targeting metrics use `table: "metrics"` (not queried via `log_stream`).
+
+### Core Columns
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `timestamp` | DateTime64 | Metric timestamp |
+| `name` | String | Metric name (e.g., `system.cpu.utilization`) |
+| `data_type` | String | Metric type: `Gauge`, `Sum`, `Histogram`, `Summary` |
+| `value` | Float64 | Metric value |
+| `unit` | String | Unit of measurement (e.g., `By`, `1`, `{cpu}`) |
+| `is_delta` | UInt8 | Whether metric is delta (1) or cumulative (0) |
+| `is_monotonic` | UInt8 | Whether metric is monotonic (1) or not (0) |
+| `_string_attributes` | Map(String, String) | String-valued resource/metric attributes |
+
+### Discovery Queries
+
+#### List all metric names with data types
+```sql
+SELECT DISTINCT name, data_type
+FROM metric_stream
+ORDER BY name
+```
+
+#### Metric value ranges
+```sql
+SELECT
+    name,
+    data_type,
+    count(*) AS samples,
+    min(value) AS min_val,
+    avg(value) AS avg_val,
+    max(value) AS max_val
+FROM metric_stream
+GROUP BY name, data_type
+ORDER BY samples DESC
+```
+
+#### Per-metric sample counts and time range
+```sql
+SELECT
+    name,
+    data_type,
+    count(*) AS cnt,
+    min(timestamp) AS earliest,
+    max(timestamp) AS latest
+FROM metric_stream
+GROUP BY name, data_type
+ORDER BY cnt DESC
+```
+
+### Dashboard Field Format
+
+When using metrics in dashboard `field`, combine the name and data type: `"name - DataType"`.
+
+Example: metric name `system.cpu.utilization` with data_type `Gauge` → field value `"system.cpu.utilization - Gauge"`.
+
 ## Common WHERE Patterns (ClickHouse SQL Only)
 
 **IMPORTANT:** These SQL patterns are for ClickHouse discovery queries (`query_clickhouse.py --query "..."`) only. Dashboard `where` clauses use **Lucene syntax** instead (e.g., `service:my-service span_name:my-span`). See [rules.md](rules.md) for dashboard rules.

@@ -8,6 +8,7 @@ description: Generates, validates, and deploys HyperDX dashboard definitions via
 ## Workflow
 
 1. **Discover data** — Run `.venv/bin/python query_clickhouse.py --summary --attributes` to see available services, span names, and attributes in ClickHouse.
+   For metrics, also query: `.venv/bin/python query_clickhouse.py --query "SELECT DISTINCT name, data_type FROM metric_stream ORDER BY name"` or use the API: `curl -s http://localhost:8000/metrics/names -H "Authorization: Bearer {TOKEN}"`
 2. **Generate JSON** — Build the dashboard definition following the Chart Format below.
 3. **Validate** — For every chart, print the Post-Generation Validation Checklist from `references/rules.md` with `[ok]` or `[FAIL]` for each item. Fix all `[FAIL]` items before proceeding. Do NOT skip this step.
 4. **Deploy** — Use Python `requests` to POST to the HyperDX internal API on port 8000.
@@ -47,7 +48,8 @@ Both endpoints read/write the same dashboards. The difference is the wire format
 
 | | Internal `/dashboards` | Public `/api/v1/dashboards` |
 |---|---|---|
-| **Series source** | `table: "logs"` | `dataSource: "events"` |
+| **Series source (logs/traces)** | `table: "logs"` | `dataSource: "events"` |
+| **Series source (metrics)** | `table: "metrics"` | `dataSource: "metrics"` |
 | **Ratio mode** | `seriesReturnType: "column"` | `asRatio: false` |
 | **Response ID** | `_id` | `id` |
 | **Input accepts** | internal format only | accepts `table` (auto-converts to `dataSource` in response) |
@@ -95,7 +97,7 @@ Key points:
 | 2 | `field` uses HyperDX names (e.g., `system.cpu.percent`) | ClickHouse expressions like `_number_attributes['...']` won't work |
 | 3 | Top-level array is `charts`, not `tiles` | Dashboard shows empty |
 | 4 | Series `type` must be: `time`, `number`, `table`, `histogram`, `search`, `markdown` | Chart renders blank |
-| 5 | `aggFn` must be valid | **Standard:** `count`, `sum`, `avg`, `min`, `max`, `p50`, `p90`, `p95`, `p99`, `count_distinct`, `avg_rate`, `sum_rate`, `min_rate`, `max_rate`, `p50_rate`, `p90_rate`, `p95_rate`, `p99_rate`. **Internal only:** `last_value`, `count_per_sec`, `count_per_min`, `count_per_hour`. Invalid values fail silently. |
+| 5 | `aggFn` must be valid | **Standard:** `count`, `count_rate`, `sum`, `avg`, `min`, `max`, `p50`, `p90`, `p95`, `p99`, `count_distinct`, `avg_rate`, `sum_rate`, `min_rate`, `max_rate`, `p50_rate`, `p90_rate`, `p95_rate`, `p99_rate`. **Internal only:** `last_value`, `count_per_sec`, `count_per_min`, `count_per_hour`. Invalid values fail silently. |
 | 6 | `numberFormat` required on `type: "number"` series | KPI tiles display raw |
 | 7 | Grid is 12 columns wide; `x + w <= 12` | Tiles overlap or overflow |
 | 8 | `field` is omitted (or absent) for `count` aggFn | Including a field with count may error |
@@ -104,9 +106,10 @@ Key points:
 | 11 | `duration` is the field name for span duration (ms) | Not `_duration` |
 | 12 | No `source`, `displayType`, `whereLanguage`, `granularity`, `config`, `select` | Old MongoDB format fields — silently ignored or cause errors |
 | 13 | All series in a chart share identical `type` and `groupBy` | Mixed types or mismatched groupBy silently drops data |
-| 14 | Always emit: `seriesReturnType: "column"`, `table: "logs"`, `groupBy: []` on time series, `query: ""` at dashboard level | Omitting creates non-deterministic API behavior |
+| 14 | Always emit: `seriesReturnType: "column"`, `table: "logs"` (or `"metrics"` for metric data), `groupBy: []` on time series, `query: ""` at dashboard level | Omitting creates non-deterministic API behavior |
 | 15 | `h: 2` for KPI (`type: "number"`), `h: 3` for all others | Inconsistent heights break row alignment |
 | 16 | Chart `id`: descriptive kebab-case, max 36 chars | Omitting generates UUIDs — unreadable in debugging |
+| 17 | Metrics series require `metricDataType` and `field` in `"name - DataType"` format | Missing `metricDataType` → API error "Metric data type is required". Wrong field format → silently returns no data. |
 
 ## Lucene Where Syntax
 
@@ -139,6 +142,7 @@ Use these in `field` and `where`, NOT ClickHouse column names:
 | `body` | `_hdx_body` | string |
 | `host` | `_host` | string |
 | Custom attributes (e.g., `system.cpu.percent`) | `_number_attributes['system.cpu.percent']` | auto-detected |
+| Metric fields (e.g., `system.cpu.utilization - Gauge`) | From `/metrics/names` API or `metric_stream` table | metric |
 
 ## Series Types
 
@@ -150,6 +154,65 @@ Use these in `field` and `where`, NOT ClickHouse column names:
 | `histogram` | Histogram | |
 | `search` | Search results | `fields` array |
 | `markdown` | Markdown text | `content` string |
+
+## Metrics Charts
+
+When charting **metric data** (from the `metric_stream` ClickHouse table), series require three additional fields compared to logs/traces:
+
+1. **`table: "metrics"`** — NOT `"logs"`
+2. **`metricDataType`** — required string: `"Gauge"`, `"Sum"`, `"Histogram"`, or `"Summary"`
+3. **`field` format: `"metric.name - DataType"`** — e.g., `"system.cpu.utilization - Gauge"`, `"http.server.request.duration - Histogram"`
+
+### Discovering metrics
+
+```bash
+# Via ClickHouse — list all metric names and their data types
+.venv/bin/python query_clickhouse.py --query "SELECT DISTINCT name, data_type FROM metric_stream ORDER BY name"
+
+# Via HyperDX API — returns metric names in the "name - DataType" format
+curl -s http://localhost:8000/metrics/names -H "Authorization: Bearer {TOKEN}"
+```
+
+### Metrics `time` series example
+
+```json
+{
+  "type": "time",
+  "table": "metrics",
+  "aggFn": "avg",
+  "field": "system.cpu.utilization - Gauge",
+  "metricDataType": "Gauge",
+  "where": "",
+  "groupBy": []
+}
+```
+
+### Metrics `number` series (KPI) example
+
+```json
+{
+  "type": "number",
+  "table": "metrics",
+  "aggFn": "avg",
+  "field": "system.memory.usage - Sum",
+  "metricDataType": "Sum",
+  "where": "",
+  "numberFormat": {
+    "output": "byte",
+    "mantissa": 0,
+    "factor": 1,
+    "thousandSeparated": true,
+    "average": false,
+    "decimalBytes": true
+  }
+}
+```
+
+### Notes
+
+- **Sum-type metrics** support `_rate` aggFn variants (e.g., `sum_rate`, `avg_rate`, `count_rate`)
+- The `metricDataType` value must match the suffix in the `field` name (e.g., field `"... - Gauge"` → `metricDataType: "Gauge"`)
+- All other chart-level fields (`id`, `name`, `x`, `y`, `w`, `h`, `seriesReturnType`) remain the same as logs charts
 
 ## Deploy Pattern (Python)
 
