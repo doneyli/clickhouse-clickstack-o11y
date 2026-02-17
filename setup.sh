@@ -132,6 +132,30 @@ if (!src) {
     });
 }
 
+// Ensure logs source exists
+if (!db.sources.findOne({kind: "log"})) {
+    db.sources.insertOne({
+        name: "Backend Logs",
+        kind: "log",
+        team: team._id,
+        from: { format: "internal", databaseName: "default", tableName: "log_stream" },
+        createdAt: new Date(),
+        updatedAt: new Date()
+    });
+}
+
+// Ensure metrics source exists
+if (!db.sources.findOne({kind: "metric"})) {
+    db.sources.insertOne({
+        name: "Backend Metrics",
+        kind: "metric",
+        team: team._id,
+        from: { format: "internal", databaseName: "default", tableName: "metric_stream" },
+        createdAt: new Date(),
+        updatedAt: new Date()
+    });
+}
+
 print(user.accessKey);
 ' 2>/dev/null || echo "")
 
