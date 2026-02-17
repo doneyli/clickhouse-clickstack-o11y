@@ -12,6 +12,12 @@ services:
       - "8123:8123"   # ClickHouse HTTP (for direct SQL queries)
       - "8000:8000"   # HyperDX Internal API
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     volumes:
       - hyperdx-data:/var/lib/clickhouse
     environment:

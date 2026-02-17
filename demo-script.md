@@ -26,7 +26,7 @@
   span_name
   - Count where severity_text = 'ERROR'
   - P95 of _number_attributes['app.order.amount'] for
-  checkoutservice
+  checkout
 
 
   5. Cleanup
