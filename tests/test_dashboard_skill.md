@@ -24,7 +24,7 @@ The 17 rules referenced throughout this document:
 | R5 | Multi-series consistency | All series in a chart share the same `groupBy` |
 | R6 | `count` has no `field` | When `aggFn` is `count`, omit `field` entirely |
 | R7 | `numberFormat` required | `type: "number"` KPI tiles must have `numberFormat` with all 6 properties |
-| R8 | `seriesReturnType` | Every chart has `seriesReturnType: "column"` |
+| R8 | `asRatio` | Every chart has `asRatio: false` |
 | R9 | Grid bounds | `x + w <= 12` for every chart; no overlapping positions |
 | R10 | `groupBy` is an array | `groupBy` is always an array (e.g., `["span_name"]` or `[]`) |
 | R11 | Metrics require `table: "metrics"` | Metric series use `table: "metrics"`, not `"logs"` |
@@ -63,7 +63,7 @@ Create a dashboard for the data in this system. Discover what's available and bu
 | 5 | All `where` clauses use Lucene syntax | |
 | 6 | All fields use HyperDX names (not `_duration`, `_service`) | |
 | 7 | Grid layout valid: no `x + w > 12`, heights follow convention | |
-| 8 | `seriesReturnType: "column"` on every chart | |
+| 8 | `asRatio: false` on every chart | |
 | 9 | Successfully deploys via API (HTTP 200) | |
 | 10 | Renders in UI at `http://localhost:8080/dashboards` | |
 
@@ -220,7 +220,7 @@ Build a dashboard with:
 | 3 | aggFns are `avg`, `p50`, `p90`, `p99` with `field: "duration"` | |
 | 4 | Chart 2 has `groupBy: ["service"]` | |
 | 5 | Chart 2 uses `aggFn: "count"`, no `field` | |
-| 6 | Both charts have `seriesReturnType: "column"` | |
+| 6 | Both charts have `asRatio: false` | |
 | 7 | Successfully deploys and renders | |
 
 **Rules Primarily Tested:** R5, R10, R13, R14

@@ -2,10 +2,10 @@
 
 ## API Endpoint
 
-Use the **internal** endpoint (NOT `/api/v1/dashboards` — see SKILL.md for why):
+Use the **public** endpoint (matches official docs, accepts `table` for convenience):
 
 ```
-POST http://localhost:8000/dashboards
+POST http://localhost:8000/api/v1/dashboards
 Authorization: Bearer {ACCESS_KEY}
 Content-Type: application/json
 ```
@@ -42,7 +42,7 @@ Content-Type: application/json
       "numberFormat": {}
     }
   ],
-  "seriesReturnType": "column"
+  "asRatio": false
 }
 ```
 
@@ -57,7 +57,7 @@ Content-Type: application/json
 | `w` | number | Yes | Width in grid units, 1–12 |
 | `h` | number | Yes | Height in grid units, typically 2 (KPI) or 3 (chart) |
 | `series` | array | Yes | 1+ series objects (see below) |
-| `seriesReturnType` | string | Yes | Always `"column"`. Required by this skill for determinism. |
+| `asRatio` | boolean | Yes | Always `false`. Required by this skill for determinism. |
 
 ## Series Fields
 
@@ -193,9 +193,7 @@ For each series type, emit **exactly** these fields — no more, no less (except
 
 ## Valid `aggFn` Values
 
-**Standard (public + internal):** `count`, `count_rate`, `sum`, `avg`, `min`, `max`, `p50`, `p90`, `p95`, `p99`, `count_distinct`, `avg_rate`, `sum_rate`, `min_rate`, `max_rate`, `p50_rate`, `p90_rate`, `p95_rate`, `p99_rate`
-
-**Internal API only:** `last_value`, `count_per_sec`, `count_per_min`, `count_per_hour`
+**Valid values:** `count`, `count_rate`, `sum`, `avg`, `min`, `max`, `p50`, `p90`, `p95`, `p99`, `count_distinct`, `avg_rate`, `sum_rate`, `min_rate`, `max_rate`, `p50_rate`, `p90_rate`, `p95_rate`, `p99_rate`
 
 ## numberFormat Object
 

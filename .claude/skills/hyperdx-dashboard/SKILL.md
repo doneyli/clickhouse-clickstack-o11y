@@ -11,7 +11,7 @@ description: Generates, validates, and deploys HyperDX dashboard definitions via
    For metrics, also query: `.venv/bin/python query_clickhouse.py --query "SELECT DISTINCT name, data_type FROM metric_stream ORDER BY name"` or use the API: `curl -s http://localhost:8000/metrics/names -H "Authorization: Bearer {TOKEN}"`
 2. **Generate JSON** — Build the dashboard definition following the Chart Format below.
 3. **Validate** — For every chart, print the Post-Generation Validation Checklist from `references/rules.md` with `[ok]` or `[FAIL]` for each item. Fix all `[FAIL]` items before proceeding. Do NOT skip this step.
-4. **Deploy** — Use Python `requests` to POST to the HyperDX internal API on port 8000.
+4. **Deploy** — Use Python `requests` to POST to the HyperDX public API (`/api/v1/dashboards`) on port 8000.
 5. **Verify** — Open HyperDX UI at `http://localhost:8080/dashboards` and confirm charts render.
 
 ## CRITICAL: Always Use the API
@@ -21,17 +21,17 @@ description: Generates, validates, and deploys HyperDX dashboard definitions via
 Both endpoints work (user's MongoDB team has been aligned with the local team):
 
 ```
-# Internal API (recommended — uses same format as UI)
-POST http://localhost:8000/dashboards
-GET  http://localhost:8000/dashboards
-PUT  http://localhost:8000/dashboards/{id}
-DELETE http://localhost:8000/dashboards/{id}
-
-# Public API v1 (official docs format — also works)
+# Public API v1 (recommended — matches official docs)
 POST http://localhost:8000/api/v1/dashboards
 GET  http://localhost:8000/api/v1/dashboards
 PUT  http://localhost:8000/api/v1/dashboards/{id}
 DELETE http://localhost:8000/api/v1/dashboards/{id}
+
+# Internal API (also works — uses same format as UI)
+POST http://localhost:8000/dashboards
+GET  http://localhost:8000/dashboards
+PUT  http://localhost:8000/dashboards/{id}
+DELETE http://localhost:8000/dashboards/{id}
 ```
 
 **Auth:** `Authorization: Bearer {ACCESS_KEY}`
@@ -46,17 +46,17 @@ docker exec hyperdx-local mongo --quiet --eval \
 
 Both endpoints read/write the same dashboards. The difference is the wire format:
 
-| | Internal `/dashboards` | Public `/api/v1/dashboards` |
+| | Public `/api/v1/dashboards` | Internal `/dashboards` |
 |---|---|---|
-| **Series source (logs/traces)** | `table: "logs"` | `dataSource: "events"` |
-| **Series source (metrics)** | `table: "metrics"` | `dataSource: "metrics"` |
-| **Ratio mode** | `seriesReturnType: "column"` | `asRatio: false` |
-| **Response ID** | `_id` | `id` |
-| **Input accepts** | internal format only | accepts `table` (auto-converts to `dataSource` in response) |
+| **Series source (logs/traces)** | `dataSource: "events"` (or `table: "logs"` — auto-converted) | `table: "logs"` |
+| **Series source (metrics)** | `dataSource: "metrics"` (or `table: "metrics"` — auto-converted) | `table: "metrics"` |
+| **Ratio mode** | `asRatio: false` | `seriesReturnType: "column"` |
+| **Response ID** | `id` | `_id` |
+| **Input accepts** | accepts `table` (auto-converts to `dataSource` in response) | internal format only |
 
-**Use the internal `/dashboards` endpoint** — it matches the format used throughout this project's dashboard JSON files and the UI.
+**Use the public `/api/v1/dashboards` endpoint** — it matches the official docs and accepts `table` for convenience (auto-converts to `dataSource`).
 
-## Chart Format (Internal API)
+## Chart Format (Public API)
 
 ```json
 {
@@ -76,7 +76,7 @@ Both endpoints read/write the same dashboards. The difference is the wire format
         "where": "span_name:cpu-load-sample service:macos-system-monitor",
         "groupBy": []
       }],
-      "seriesReturnType": "column"
+      "asRatio": false
     }
   ]
 }
@@ -84,7 +84,7 @@ Both endpoints read/write the same dashboards. The difference is the wire format
 
 Key points:
 - **`charts`** array (NOT `tiles`)
-- Each chart has `id`, `name`, `x`, `y`, `w`, `h`, `series`, `seriesReturnType`
+- Each chart has `id`, `name`, `x`, `y`, `w`, `h`, `series`, `asRatio`
 - **`where`** uses Lucene syntax (NOT SQL)
 - **`field`** uses HyperDX field names (NOT ClickHouse column expressions)
 - **No** `source`, `displayType`, `whereLanguage`, or `granularity` fields
@@ -97,7 +97,7 @@ Key points:
 | 2 | `field` uses HyperDX names (e.g., `system.cpu.percent`) | ClickHouse expressions like `_number_attributes['...']` won't work |
 | 3 | Top-level array is `charts`, not `tiles` | Dashboard shows empty |
 | 4 | Series `type` must be: `time`, `number`, `table`, `histogram`, `search`, `markdown` | Chart renders blank |
-| 5 | `aggFn` must be valid | **Standard:** `count`, `count_rate`, `sum`, `avg`, `min`, `max`, `p50`, `p90`, `p95`, `p99`, `count_distinct`, `avg_rate`, `sum_rate`, `min_rate`, `max_rate`, `p50_rate`, `p90_rate`, `p95_rate`, `p99_rate`. **Internal only:** `last_value`, `count_per_sec`, `count_per_min`, `count_per_hour`. Invalid values fail silently. |
+| 5 | `aggFn` must be valid | **Standard:** `count`, `count_rate`, `sum`, `avg`, `min`, `max`, `p50`, `p90`, `p95`, `p99`, `count_distinct`, `avg_rate`, `sum_rate`, `min_rate`, `max_rate`, `p50_rate`, `p90_rate`, `p95_rate`, `p99_rate`. Invalid values fail silently. |
 | 6 | `numberFormat` required on `type: "number"` series | KPI tiles display raw |
 | 7 | Grid is 12 columns wide; `x + w <= 12` | Tiles overlap or overflow |
 | 8 | `field` is omitted (or absent) for `count` aggFn | Including a field with count may error |
@@ -106,7 +106,7 @@ Key points:
 | 11 | `duration` is the field name for span duration (ms) | Not `_duration` |
 | 12 | No `source`, `displayType`, `whereLanguage`, `granularity`, `config`, `select` | Old MongoDB format fields — silently ignored or cause errors |
 | 13 | All series in a chart share identical `type` and `groupBy` | Mixed types or mismatched groupBy silently drops data |
-| 14 | Always emit: `seriesReturnType: "column"`, `table: "logs"` (or `"metrics"` for metric data), `groupBy: []` on time series, `query: ""` at dashboard level | Omitting creates non-deterministic API behavior |
+| 14 | Always emit: `asRatio: false`, `table: "logs"` (or `"metrics"` for metric data), `groupBy: []` on time series, `query: ""` at dashboard level | Omitting creates non-deterministic API behavior |
 | 15 | `h: 2` for KPI (`type: "number"`), `h: 3` for all others | Inconsistent heights break row alignment |
 | 16 | Chart `id`: descriptive kebab-case, max 36 chars | Omitting generates UUIDs — unreadable in debugging |
 | 17 | Metrics series require `metricDataType` and `field` in `"name - DataType"` format | Missing `metricDataType` → API error "Metric data type is required". Wrong field format → silently returns no data. |
@@ -213,7 +213,7 @@ curl -s http://localhost:8000/metrics/names -H "Authorization: Bearer {TOKEN}"
 
 - **Sum-type metrics** support `_rate` aggFn variants (e.g., `sum_rate`, `avg_rate`, `count_rate`)
 - The `metricDataType` value must match the suffix in the `field` name (e.g., field `"... - Gauge"` → `metricDataType: "Gauge"`)
-- All other chart-level fields (`id`, `name`, `x`, `y`, `w`, `h`, `seriesReturnType`) remain the same as logs charts
+- All other chart-level fields (`id`, `name`, `x`, `y`, `w`, `h`, `asRatio`) remain the same as logs charts
 
 ## Deploy Pattern (Python)
 
@@ -231,9 +231,9 @@ dashboard = {
     'charts': [ ... ]
 }
 
-resp = requests.post(f'{API}/dashboards', headers=HEADERS, json=dashboard)
+resp = requests.post(f'{API}/api/v1/dashboards', headers=HEADERS, json=dashboard)
 data = resp.json()['data']
-print(f"URL: http://localhost:8080/dashboards/{data['_id']}")
+print(f"URL: http://localhost:8080/dashboards/{data['id']}")
 ```
 
 ### Deploy Error Handling
@@ -248,12 +248,12 @@ Always check `resp.status_code` after the POST:
 | Connection refused | Container not running | Start it: `docker compose up -d` |
 
 ```python
-resp = requests.post(f'{API}/dashboards', headers=HEADERS, json=dashboard)
+resp = requests.post(f'{API}/api/v1/dashboards', headers=HEADERS, json=dashboard)
 if resp.status_code != 200:
     print(f"Deploy failed ({resp.status_code}): {resp.text}")
 else:
     data = resp.json()['data']
-    print(f"URL: http://localhost:8080/dashboards/{data['_id']}")
+    print(f"URL: http://localhost:8080/dashboards/{data['id']}")
 ```
 
 ## Common Chart Patterns

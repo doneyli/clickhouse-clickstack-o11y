@@ -124,7 +124,7 @@ ACCESS_KEY=$(docker exec hyperdx-local mongo --quiet --eval \
   'db=db.getSiblingDB("hyperdx"); print(db.users.findOne({}).accessKey)')
 
 # Create a dashboard
-curl -X POST http://localhost:8000/dashboards \
+curl -X POST http://localhost:8000/api/v1/dashboards \
   -H "Authorization: Bearer ${ACCESS_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -140,7 +140,7 @@ curl -X POST http://localhost:8000/dashboards \
         "where": "",
         "groupBy": ["service"]
       }],
-      "seriesReturnType": "column"
+      "asRatio": false
     }]
   }'
 ```

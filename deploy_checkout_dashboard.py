@@ -31,7 +31,7 @@ dashboard = {
                 "numberFormat": {"output": "number", "mantissa": 0, "factor": 1,
                                  "thousandSeparated": True, "average": False, "decimalBytes": False}
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
         {
             "id": "avg-checkout-latency",
@@ -46,7 +46,7 @@ dashboard = {
                 "numberFormat": {"output": "number", "mantissa": 2, "factor": 1,
                                  "thousandSeparated": True, "average": False, "decimalBytes": False}
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
         {
             "id": "p95-checkout-latency",
@@ -61,7 +61,7 @@ dashboard = {
                 "numberFormat": {"output": "number", "mantissa": 2, "factor": 1,
                                  "thousandSeparated": True, "average": False, "decimalBytes": False}
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
         {
             "id": "checkout-errors",
@@ -75,7 +75,7 @@ dashboard = {
                 "numberFormat": {"output": "number", "mantissa": 0, "factor": 1,
                                  "thousandSeparated": True, "average": False, "decimalBytes": False}
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
 
         # ── Row 1 (y=2): Latency percentiles + Request throughput ───
@@ -109,7 +109,7 @@ dashboard = {
                     "groupBy": []
                 }
             ],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
         {
             "id": "request-throughput",
@@ -122,7 +122,7 @@ dashboard = {
                 "where": "service:checkout",
                 "groupBy": ["span_name"]
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
 
         # ── Row 2 (y=5): Downstream latency + Errors over time ──────
@@ -138,7 +138,7 @@ dashboard = {
                 "where": "service:checkout",
                 "groupBy": ["span_name"]
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
         {
             "id": "errors-over-time",
@@ -151,7 +151,7 @@ dashboard = {
                 "where": "service:checkout level:error",
                 "groupBy": ["span_name"]
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
 
         # ── Row 3 (y=8): Order amount + PlaceOrder histogram ────────
@@ -167,7 +167,7 @@ dashboard = {
                 "where": "service:checkout span_name:\"oteldemo.CheckoutService/PlaceOrder\"",
                 "groupBy": []
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
         {
             "id": "placeorder-latency-dist",
@@ -179,7 +179,7 @@ dashboard = {
                 "field": "duration",
                 "where": "service:checkout span_name:\"oteldemo.CheckoutService/PlaceOrder\""
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
 
         # ── Row 4 (y=11): Operations table + Recent errors ──────────
@@ -195,7 +195,7 @@ dashboard = {
                 "groupBy": ["span_name"],
                 "sortOrder": "desc"
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
         {
             "id": "recent-errors",
@@ -207,7 +207,7 @@ dashboard = {
                 "where": "service:checkout level:error",
                 "fields": ["level", "service", "body"]
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
 
         # ══════════════════════════════════════════════════════════════
@@ -228,7 +228,7 @@ dashboard = {
                 "numberFormat": {"output": "number", "mantissa": 2, "factor": 1,
                                  "thousandSeparated": True, "average": False, "decimalBytes": False}
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
         {
             "id": "avg-cart-latency",
@@ -243,7 +243,7 @@ dashboard = {
                 "numberFormat": {"output": "number", "mantissa": 2, "factor": 1,
                                  "thousandSeparated": True, "average": False, "decimalBytes": False}
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
         {
             "id": "avg-shipping-latency",
@@ -258,7 +258,7 @@ dashboard = {
                 "numberFormat": {"output": "number", "mantissa": 2, "factor": 1,
                                  "thousandSeparated": True, "average": False, "decimalBytes": False}
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
         {
             "id": "total-payment-txns",
@@ -272,7 +272,7 @@ dashboard = {
                 "numberFormat": {"output": "number", "mantissa": 0, "factor": 1,
                                  "thousandSeparated": True, "average": False, "decimalBytes": False}
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
 
         # ── Row 6 (y=16): Backend latency + Backend errors ──────────
@@ -314,7 +314,7 @@ dashboard = {
                     "groupBy": []
                 }
             ],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
         {
             "id": "backend-errors-by-svc",
@@ -327,7 +327,7 @@ dashboard = {
                 "where": "level:error (service:payment OR service:cart OR service:shipping OR service:currency)",
                 "groupBy": ["service"]
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
 
         # ── Row 7 (y=19): Infra metrics ─────────────────────────────
@@ -344,7 +344,7 @@ dashboard = {
                 "where": "",
                 "groupBy": []
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
         {
             "id": "redis-memory-used",
@@ -359,7 +359,7 @@ dashboard = {
                 "where": "",
                 "groupBy": []
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
 
         # ── Row 8 (y=22): JVM + Kafka metrics ───────────────────────
@@ -376,7 +376,7 @@ dashboard = {
                 "where": "",
                 "groupBy": []
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         },
         {
             "id": "kafka-consumer-lag",
@@ -391,18 +391,18 @@ dashboard = {
                 "where": "",
                 "groupBy": []
             }],
-            "seriesReturnType": "column"
+            "asRatio": False
         }
     ]
 }
 
-resp = requests.post(f'{API}/dashboards', headers=HEADERS, json=dashboard)
+resp = requests.post(f'{API}/api/v1/dashboards', headers=HEADERS, json=dashboard)
 if resp.status_code != 200:
     print(f"Deploy FAILED ({resp.status_code}): {resp.text}")
     sys.exit(1)
 
 data = resp.json()['data']
-dashboard_id = data['_id']
+dashboard_id = data['id']
 print(f"Dashboard deployed successfully!")
 print(f"URL: http://localhost:8080/dashboards/{dashboard_id}")
 print(f"Charts: {len(data['charts'])}")

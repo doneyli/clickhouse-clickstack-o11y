@@ -97,26 +97,36 @@ sleep 3
 API_KEY=$(docker exec hyperdx-local mongo --quiet --eval '
 db = db.getSiblingDB("hyperdx");
 
-// Ensure team exists
-var team = db.teams.findOne({});
+// Use the hardcoded local team ID that HyperDX Local expects.
+// The public API resolves the team from the user record — if the user
+// points to a different team the dashboard will be invisible in the UI.
+var LOCAL_TEAM_ID = ObjectId("5f6c6f63616c5f7465616d5f");
+
+// Ensure team exists with the known local ID
+var team = db.teams.findOne({ _id: LOCAL_TEAM_ID });
 if (!team) {
-    db.teams.insertOne({ name: "Local Team", createdAt: new Date(), updatedAt: new Date() });
-    team = db.teams.findOne({});
+    // Remove any auto-generated team first
+    db.teams.deleteMany({});
+    db.teams.insertOne({ _id: LOCAL_TEAM_ID, name: "Local Team", createdAt: new Date(), updatedAt: new Date() });
+    team = db.teams.findOne({ _id: LOCAL_TEAM_ID });
 }
 
-// Ensure user exists with API key
+// Ensure user exists with API key, pointing to the correct team
 var user = db.users.findOne({});
 if (!user) {
-    var key = team._id.str + "0000000000000000";
+    var key = LOCAL_TEAM_ID.str + "0000000000000000";
     db.users.insertOne({
         email: "local@hyperdx.io",
         name: "Local User",
-        team: team._id,
+        team: LOCAL_TEAM_ID,
         accessKey: key,
         createdAt: new Date(),
         updatedAt: new Date()
     });
     user = db.users.findOne({});
+} else if (user.team.str !== LOCAL_TEAM_ID.str) {
+    // Fix team alignment if user already exists but points to wrong team
+    db.users.updateOne({ _id: user._id }, { $set: { team: LOCAL_TEAM_ID } });
 }
 
 // Ensure traces source exists
@@ -125,7 +135,7 @@ if (!src) {
     db.sources.insertOne({
         name: "Backend Traces",
         kind: "trace",
-        team: team._id,
+        team: LOCAL_TEAM_ID,
         from: { format: "internal", databaseName: "default", tableName: "log_stream" },
         createdAt: new Date(),
         updatedAt: new Date()
@@ -137,7 +147,7 @@ if (!db.sources.findOne({kind: "log"})) {
     db.sources.insertOne({
         name: "Backend Logs",
         kind: "log",
-        team: team._id,
+        team: LOCAL_TEAM_ID,
         from: { format: "internal", databaseName: "default", tableName: "log_stream" },
         createdAt: new Date(),
         updatedAt: new Date()
@@ -149,7 +159,7 @@ if (!db.sources.findOne({kind: "metric"})) {
     db.sources.insertOne({
         name: "Backend Metrics",
         kind: "metric",
-        team: team._id,
+        team: LOCAL_TEAM_ID,
         from: { format: "internal", databaseName: "default", tableName: "metric_stream" },
         createdAt: new Date(),
         updatedAt: new Date()
