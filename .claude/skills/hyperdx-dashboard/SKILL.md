@@ -110,6 +110,7 @@ Key points:
 | 15 | `h: 2` for KPI (`type: "number"`), `h: 3` for all others | Inconsistent heights break row alignment |
 | 16 | Chart `id`: descriptive kebab-case, max 36 chars | Omitting generates UUIDs — unreadable in debugging |
 | 17 | Metrics series require `metricDataType` and `field` in `"name - DataType"` format | Missing `metricDataType` → API error "Metric data type is required". Wrong field format → silently returns no data. |
+| 18 | **NEVER use `type:span` or `type:log`** in `where` clauses | The `type` column is internal to HyperDX and NOT searchable via Lucene. `type:span` silently returns 0 rows. To scope to spans, filter by `service:X` or use duration-based aggregations (logs have 0 duration). |
 
 ## Lucene Where Syntax
 

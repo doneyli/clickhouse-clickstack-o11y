@@ -103,6 +103,7 @@ Key rules:
 - **`log_stream`** stores spans, logs, and events. **`metric_stream`** stores metrics.
 - **`_duration` is already milliseconds** — Float64, no conversion needed.
 - **MongoDB shell is `mongo` not `mongosh`** — HyperDX Local uses legacy shell.
+- **NEVER use `type:span` or `type:log` in Lucene `where` clauses** — The `type` column is internal to HyperDX and not searchable via Lucene. Using it silently returns 0 rows. Instead, filter by `service:X` or rely on field-based aggregations (e.g., `duration` only applies to spans).
 
 ## ClickHouse `log_stream` Schema (Key Columns)
 

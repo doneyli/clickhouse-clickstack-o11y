@@ -21,12 +21,13 @@
 | 15 | `h: 2` for `type: "number"` (KPI), `h: 3` for all other chart types | Inconsistent heights break row alignment. |
 | 16 | Chart `id` must be descriptive kebab-case, max 36 chars (e.g., `avg-latency-ms`, `requests-over-time`). Always provide `id` explicitly. | Omitting generates UUIDs — unreadable in debugging. |
 | 17 | Metrics series require `metricDataType` field (`"Gauge"`, `"Sum"`, `"Histogram"`, `"Summary"`) and `field` in `"name - DataType"` format (e.g., `"system.cpu.utilization - Gauge"`) | Missing `metricDataType` → API error "Metric data type is required". Wrong field format → silently returns no data. |
+| 18 | **NEVER use `type:span` or `type:log` in `where`** | The `type` column is internal to HyperDX and NOT searchable via Lucene. Using it silently returns 0 rows. Filter by `service:X` instead, or omit the type filter. |
 
 ## Post-Generation Validation Checklist
 
 **For every chart**, print the checklist below with `[ok]` or `[FAIL]` for each item. Fix all `[FAIL]` items before deploying. Do NOT skip this step.
 
-- [ ] **1. `where` uses Lucene syntax** — `span_name:value service:name` NOT SQL `type = 'span' AND ...`
+- [ ] **1. `where` uses Lucene syntax** — `span_name:value service:name` NOT SQL `type = 'span' AND ...`. **NEVER use `type:span` or `type:log`** — these silently return 0 rows.
 - [ ] **2. `field` uses HyperDX names** — `system.cpu.percent` NOT `_number_attributes['...']`; `duration` NOT `_duration`; `service` NOT `_service`
 - [ ] **3. Top-level key is `charts`** — NOT `tiles`
 - [ ] **4. Series `type` is valid** — `time`, `number`, `table`, `histogram`, `search`, or `markdown`
