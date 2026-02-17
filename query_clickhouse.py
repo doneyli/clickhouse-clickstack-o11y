@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Utility to query ClickHouse directly for inspecting ingested trace data.
+Utility to query ClickHouse directly for inspecting ingested data.
 
 Usage:
     python query_clickhouse.py --query "SELECT count(*) FROM log_stream"
-    python query_clickhouse.py --summary      # Data summary
-    python query_clickhouse.py --attributes   # All gen_ai.* attributes
+    python query_clickhouse.py --summary      # Data overview
+    python query_clickhouse.py --attributes   # All attribute keys
     python query_clickhouse.py --services     # All services
 """
 
@@ -51,7 +51,6 @@ def run_query(query: str):
     client = get_client()
     result = client.query(query)
     if result.column_names:
-        # Print header
         header = " | ".join(str(c) for c in result.column_names)
         print(header)
         print("-" * len(header))
@@ -73,68 +72,98 @@ def show_summary():
     for row in result.result_rows:
         print(f"  {row[0]}")
 
-    # Data distribution
-    print("\n--- Trace Data Distribution ---")
+    # Row counts by type
+    print("\n--- Row Counts by Type ---")
     try:
         result = client.query("""
             SELECT
-                count(*) as total_traces,
-                countIf(_string_attributes['gen_ai.request.model'] != '') as llm_traces,
-                min(timestamp) as earliest,
-                max(timestamp) as latest,
-                count(DISTINCT _service) as services,
-                count(DISTINCT _string_attributes['gen_ai.request.model']) - 1 as models
+                type,
+                count(*) as cnt
             FROM log_stream
-            WHERE type = 'span'
-        """)
-        if result.result_rows:
-            row = result.result_rows[0]
-            print(f"  Total traces:  {row[0]:,}")
-            print(f"  LLM traces:    {row[1]:,}")
-            print(f"  Earliest:      {row[2]}")
-            print(f"  Latest:        {row[3]}")
-            print(f"  Services:      {row[4]}")
-            print(f"  Models:        {row[5]}")
-    except Exception as e:
-        print(f"  (No trace data yet: {e})")
-
-    # Per-model stats
-    print("\n--- Per-Model Stats ---")
-    try:
-        result = client.query("""
-            SELECT
-                _string_attributes['gen_ai.request.model'] as model,
-                count(*) as cnt,
-                round(avg(_number_attributes['gen_ai.usage.input_tokens']), 0) as avg_input,
-                round(avg(_number_attributes['gen_ai.usage.output_tokens']), 0) as avg_output,
-                round(avg(_duration), 0) as avg_latency_ms
-            FROM log_stream
-            WHERE type = 'span'
-              AND _string_attributes['gen_ai.request.model'] != ''
-            GROUP BY model
+            GROUP BY type
             ORDER BY cnt DESC
         """)
         if result.result_rows:
-            print(f"  {'Model':<35} {'Count':>8} {'Avg In':>8} {'Avg Out':>8} {'Avg ms':>8}")
-            print(f"  {'-'*35} {'-'*8} {'-'*8} {'-'*8} {'-'*8}")
             for row in result.result_rows:
-                print(f"  {row[0]:<35} {row[1]:>8,} {row[2]:>8,.0f} {row[3]:>8,.0f} {row[4]:>8,.0f}")
+                print(f"  {row[0]:<15} {row[1]:>10,}")
+        else:
+            print("  (no data)")
     except Exception as e:
-        print(f"  (No LLM data yet: {e})")
+        print(f"  (No data yet: {e})")
+
+    # Data distribution
+    print("\n--- Data Overview ---")
+    try:
+        result = client.query("""
+            SELECT
+                count(*) as total_rows,
+                count(DISTINCT _service) as services,
+                count(DISTINCT span_name) as span_names,
+                min(timestamp) as earliest,
+                max(timestamp) as latest
+            FROM log_stream
+        """)
+        if result.result_rows:
+            row = result.result_rows[0]
+            print(f"  Total rows:    {row[0]:,}")
+            print(f"  Services:      {row[1]}")
+            print(f"  Span names:    {row[2]}")
+            print(f"  Earliest:      {row[3]}")
+            print(f"  Latest:        {row[4]}")
+    except Exception as e:
+        print(f"  (No data yet: {e})")
+
+    # Per-service breakdown
+    print("\n--- Per-Service Breakdown ---")
+    try:
+        result = client.query("""
+            SELECT
+                _service as service,
+                count(*) as cnt,
+                round(avg(_duration), 0) as avg_latency_ms
+            FROM log_stream
+            WHERE type = 'span'
+            GROUP BY service
+            ORDER BY cnt DESC
+            LIMIT 20
+        """)
+        if result.result_rows:
+            print(f"  {'Service':<40} {'Count':>10} {'Avg ms':>10}")
+            print(f"  {'-'*40} {'-'*10} {'-'*10}")
+            for row in result.result_rows:
+                print(f"  {row[0]:<40} {row[1]:>10,} {row[2]:>10,.0f}")
+    except Exception as e:
+        print(f"  (No span data yet: {e})")
 
 
 def show_attributes():
-    """Show all gen_ai.* attributes found in traces."""
+    """Show all attribute keys found in the data."""
     client = get_client()
-    print("gen_ai.* attributes found in log_stream:")
-    print("-" * 40)
+
+    print("String attribute keys in log_stream:")
+    print("-" * 50)
     try:
         result = client.query("""
             SELECT DISTINCT arrayJoin(mapKeys(_string_attributes)) as attr_key
             FROM log_stream
-            WHERE type = 'span'
-              AND attr_key LIKE 'gen_ai.%'
             ORDER BY attr_key
+            LIMIT 100
+        """)
+        for row in result.result_rows:
+            print(f"  {row[0]}")
+        if not result.result_rows:
+            print("  (none found)")
+    except Exception as e:
+        print(f"  Error: {e}")
+
+    print("\nNumber attribute keys in log_stream:")
+    print("-" * 50)
+    try:
+        result = client.query("""
+            SELECT DISTINCT arrayJoin(mapKeys(_number_attributes)) as attr_key
+            FROM log_stream
+            ORDER BY attr_key
+            LIMIT 100
         """)
         for row in result.result_rows:
             print(f"  {row[0]}")
@@ -145,7 +174,7 @@ def show_attributes():
 
 
 def show_services():
-    """Show all services in traces."""
+    """Show all services in the data."""
     client = get_client()
     print("Services in log_stream:")
     print("-" * 40)
@@ -153,7 +182,6 @@ def show_services():
         result = client.query("""
             SELECT DISTINCT _service
             FROM log_stream
-            WHERE type = 'span'
             ORDER BY _service
         """)
         for row in result.result_rows:
@@ -165,10 +193,10 @@ def show_services():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Query ClickHouse for trace data inspection")
+    parser = argparse.ArgumentParser(description="Query ClickHouse for data inspection")
     parser.add_argument("--query", type=str, help="Run a custom SQL query")
-    parser.add_argument("--summary", action="store_true", help="Show data summary")
-    parser.add_argument("--attributes", action="store_true", help="Show gen_ai.* attributes")
+    parser.add_argument("--summary", action="store_true", help="Show data overview")
+    parser.add_argument("--attributes", action="store_true", help="Show all attribute keys")
     parser.add_argument("--services", action="store_true", help="Show all services")
     args = parser.parse_args()
 
@@ -181,7 +209,6 @@ def main():
     elif args.services:
         show_services()
     else:
-        # Default: show summary
         show_summary()
 
 

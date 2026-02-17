@@ -8,14 +8,14 @@ All examples use the HyperDX Internal API format (`charts`/`series`), deployed v
 
 ```json
 {
-  "id": "total-llm-requests",
-  "name": "Total LLM Requests",
+  "id": "total-requests",
+  "name": "Total Requests",
   "x": 0, "y": 0, "w": 3, "h": 2,
   "series": [{
     "type": "number",
     "table": "logs",
     "aggFn": "count",
-    "where": "gen_ai.request.model:*",
+    "where": "",
     "numberFormat": {
       "output": "number",
       "mantissa": 0,
@@ -35,15 +35,15 @@ Note: No `field` for `count` aggFn. Uses the **Integer Count** numberFormat temp
 
 ```json
 {
-  "id": "total-input-tokens",
-  "name": "Total Input Tokens",
+  "id": "total-metric-value",
+  "name": "Total Metric Value",
   "x": 3, "y": 0, "w": 3, "h": 2,
   "series": [{
     "type": "number",
     "table": "logs",
     "aggFn": "sum",
-    "field": "gen_ai.usage.input_tokens",
-    "where": "gen_ai.request.model:*",
+    "field": "my.numeric.attribute",
+    "where": "service:my-service",
     "numberFormat": {
       "output": "number",
       "mantissa": 0,
@@ -69,7 +69,7 @@ Note: No `field` for `count` aggFn. Uses the **Integer Count** numberFormat temp
     "table": "logs",
     "aggFn": "avg",
     "field": "duration",
-    "where": "gen_ai.request.model:*",
+    "where": "service:my-service",
     "numberFormat": {
       "output": "number",
       "mantissa": 2,
@@ -90,13 +90,13 @@ Note: Use `duration` (HyperDX field name), NOT `_duration`. Uses the **Latency m
 ```json
 {
   "id": "requests-over-time",
-  "name": "LLM Requests Over Time",
+  "name": "Requests Over Time",
   "x": 0, "y": 2, "w": 6, "h": 3,
   "series": [{
     "type": "time",
     "table": "logs",
     "aggFn": "count",
-    "where": "gen_ai.request.model:*",
+    "where": "service:my-service",
     "groupBy": []
   }],
   "seriesReturnType": "column"
@@ -107,24 +107,24 @@ Note: Use `duration` (HyperDX field name), NOT `_duration`. Uses the **Latency m
 
 ```json
 {
-  "id": "token-usage-over-time",
-  "name": "Token Usage Over Time",
+  "id": "two-metrics-over-time",
+  "name": "Two Metrics Over Time",
   "x": 6, "y": 2, "w": 6, "h": 3,
   "series": [
     {
       "type": "time",
       "table": "logs",
-      "aggFn": "sum",
-      "field": "gen_ai.usage.input_tokens",
-      "where": "gen_ai.request.model:*",
+      "aggFn": "avg",
+      "field": "metric.one",
+      "where": "service:my-service",
       "groupBy": []
     },
     {
       "type": "time",
       "table": "logs",
-      "aggFn": "sum",
-      "field": "gen_ai.usage.output_tokens",
-      "where": "gen_ai.request.model:*",
+      "aggFn": "avg",
+      "field": "metric.two",
+      "where": "service:my-service",
       "groupBy": []
     }
   ],
@@ -138,37 +138,37 @@ Multiple items in `series` array = multiple lines on the same chart.
 
 ```json
 {
-  "id": "cpu-by-status",
-  "name": "CPU % by Health Status",
+  "id": "latency-by-service",
+  "name": "Latency by Service",
   "x": 0, "y": 5, "w": 6, "h": 3,
   "series": [{
     "type": "time",
     "table": "logs",
     "aggFn": "avg",
-    "field": "system.cpu.percent",
-    "where": "span_name:cpu-load-sample service:macos-system-monitor",
-    "groupBy": ["health.status"]
+    "field": "duration",
+    "where": "",
+    "groupBy": ["service"]
   }],
   "seriesReturnType": "column"
 }
 ```
 
-### 7. System Metrics KPI (Custom Attributes)
+### 7. KPI with Custom Numeric Attribute
 
 ```json
 {
-  "id": "avg-cpu-pct",
-  "name": "Avg CPU %",
+  "id": "avg-custom-metric",
+  "name": "Avg Custom Metric",
   "x": 0, "y": 0, "w": 3, "h": 2,
   "series": [{
     "type": "number",
     "table": "logs",
     "aggFn": "avg",
-    "field": "system.cpu.percent",
-    "where": "span_name:cpu-load-sample service:macos-system-monitor",
+    "field": "my.custom.metric",
+    "where": "span_name:my-operation service:my-service",
     "numberFormat": {
-      "output": "percent",
-      "mantissa": 1,
+      "output": "number",
+      "mantissa": 2,
       "factor": 1,
       "thousandSeparated": true,
       "average": false,
@@ -178,8 +178,6 @@ Multiple items in `series` array = multiple lines on the same chart.
   "seriesReturnType": "column"
 }
 ```
-
-Note on Example 7: Uses the **Percentage** numberFormat template.
 
 ### 8. Table Chart (Top Spans by Count)
 
@@ -192,7 +190,7 @@ Note on Example 7: Uses the **Percentage** numberFormat template.
     "type": "table",
     "table": "logs",
     "aggFn": "count",
-    "where": "service:text-to-sql-service",
+    "where": "service:my-service",
     "groupBy": ["span_name"],
     "sortOrder": "desc"
   }],
@@ -225,89 +223,18 @@ Note: `search` type requires `fields` array. No `aggFn` or `groupBy`.
 
 ```json
 {
-  "id": "section-system-metrics",
+  "id": "section-header",
   "name": "Section Header",
   "x": 0, "y": 11, "w": 12, "h": 3,
   "series": [{
     "type": "markdown",
-    "content": "## System Metrics\nCPU, memory, and disk telemetry from the macOS host monitor."
+    "content": "## Section Title\nDescription text here."
   }],
   "seriesReturnType": "column"
 }
 ```
 
 Note: `markdown` type requires only `type` and `content`. No `table`, `aggFn`, `field`, or `where`.
-
-## Full Dashboard Example — LLM Observability
-
-```json
-{
-  "name": "LLM Observability (Pre-built)",
-  "query": "",
-  "tags": ["llm", "observability", "pre-built"],
-  "charts": [
-    {
-      "id": "total-llm-requests",
-      "name": "Total LLM Requests",
-      "x": 0, "y": 0, "w": 3, "h": 2,
-      "series": [{"type": "number", "table": "logs", "aggFn": "count", "where": "gen_ai.request.model:*", "numberFormat": {"output": "number", "mantissa": 0, "factor": 1, "thousandSeparated": true, "average": false, "decimalBytes": false}}],
-      "seriesReturnType": "column"
-    },
-    {
-      "id": "total-input-tokens",
-      "name": "Total Input Tokens",
-      "x": 3, "y": 0, "w": 3, "h": 2,
-      "series": [{"type": "number", "table": "logs", "aggFn": "sum", "field": "gen_ai.usage.input_tokens", "where": "gen_ai.request.model:*", "numberFormat": {"output": "number", "mantissa": 0, "factor": 1, "thousandSeparated": true, "average": false, "decimalBytes": false}}],
-      "seriesReturnType": "column"
-    },
-    {
-      "id": "total-output-tokens",
-      "name": "Total Output Tokens",
-      "x": 6, "y": 0, "w": 3, "h": 2,
-      "series": [{"type": "number", "table": "logs", "aggFn": "sum", "field": "gen_ai.usage.output_tokens", "where": "gen_ai.request.model:*", "numberFormat": {"output": "number", "mantissa": 0, "factor": 1, "thousandSeparated": true, "average": false, "decimalBytes": false}}],
-      "seriesReturnType": "column"
-    },
-    {
-      "id": "avg-latency-ms",
-      "name": "Avg Latency (ms)",
-      "x": 9, "y": 0, "w": 3, "h": 2,
-      "series": [{"type": "number", "table": "logs", "aggFn": "avg", "field": "duration", "where": "gen_ai.request.model:*", "numberFormat": {"output": "number", "mantissa": 2, "factor": 1, "thousandSeparated": true, "average": false, "decimalBytes": false}}],
-      "seriesReturnType": "column"
-    },
-    {
-      "id": "requests-over-time",
-      "name": "LLM Requests Over Time",
-      "x": 0, "y": 2, "w": 6, "h": 3,
-      "series": [{"type": "time", "table": "logs", "aggFn": "count", "where": "gen_ai.request.model:*", "groupBy": []}],
-      "seriesReturnType": "column"
-    },
-    {
-      "id": "token-usage-over-time",
-      "name": "Token Usage Over Time",
-      "x": 6, "y": 2, "w": 6, "h": 3,
-      "series": [
-        {"type": "time", "table": "logs", "aggFn": "sum", "field": "gen_ai.usage.input_tokens", "where": "gen_ai.request.model:*", "groupBy": []},
-        {"type": "time", "table": "logs", "aggFn": "sum", "field": "gen_ai.usage.output_tokens", "where": "gen_ai.request.model:*", "groupBy": []}
-      ],
-      "seriesReturnType": "column"
-    },
-    {
-      "id": "avg-latency-over-time",
-      "name": "Avg Latency Over Time (ms)",
-      "x": 0, "y": 5, "w": 6, "h": 3,
-      "series": [{"type": "time", "table": "logs", "aggFn": "avg", "field": "duration", "where": "gen_ai.request.model:*", "groupBy": []}],
-      "seriesReturnType": "column"
-    },
-    {
-      "id": "max-latency-over-time",
-      "name": "Max Latency Over Time (ms)",
-      "x": 6, "y": 5, "w": 6, "h": 3,
-      "series": [{"type": "time", "table": "logs", "aggFn": "max", "field": "duration", "where": "gen_ai.request.model:*", "groupBy": []}],
-      "seriesReturnType": "column"
-    }
-  ]
-}
-```
 
 ## Deploy Pattern
 

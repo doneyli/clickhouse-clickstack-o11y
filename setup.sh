@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # =============================================================================
-# One-command setup for HyperDX AI Dashboard Builder
+# One-command setup for ClickStack Sample Data Demo
 # =============================================================================
 #
+# Downloads the ClickStack e-commerce sample data and loads it into HyperDX.
 # This script is idempotent -- safe to run multiple times.
 #
 # Usage:
@@ -15,7 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 echo "============================================================"
-echo "  HyperDX AI Dashboard Builder -- Setup"
+echo "  ClickStack Sample Data Demo — Setup"
 echo "============================================================"
 echo ""
 
@@ -23,7 +24,7 @@ echo ""
 # Step 1: .env file
 # ---------------------------------------------------------------------------
 
-echo "[1/8] Checking .env file..."
+echo "[1/6] Checking .env file..."
 if [ ! -f .env ]; then
     cp .env.example .env
     echo "  Created .env from .env.example"
@@ -35,7 +36,7 @@ fi
 # Step 2: Python virtual environment
 # ---------------------------------------------------------------------------
 
-echo "[2/8] Setting up Python virtual environment..."
+echo "[2/6] Setting up Python virtual environment..."
 if [ ! -d .venv ]; then
     python3 -m venv .venv
     echo "  Created .venv"
@@ -50,15 +51,15 @@ echo "  Dependencies installed"
 # Step 3: Docker Compose
 # ---------------------------------------------------------------------------
 
-echo "[3/8] Starting HyperDX via Docker Compose..."
+echo "[3/6] Starting HyperDX via Docker Compose..."
 docker compose up -d
 echo "  Container started"
 
 # ---------------------------------------------------------------------------
-# Step 4: Wait for HyperDX UI
+# Step 4: Wait for services
 # ---------------------------------------------------------------------------
 
-echo "[4/8] Waiting for HyperDX UI (port 8080)..."
+echo "[4/6] Waiting for HyperDX UI (port 8080) and ClickHouse (port 8123)..."
 MAX_WAIT=120
 WAITED=0
 while ! curl -sf http://localhost:8080 > /dev/null 2>&1; do
@@ -75,11 +76,6 @@ while ! curl -sf http://localhost:8080 > /dev/null 2>&1; do
 done
 echo "  HyperDX UI is up (took ${WAITED}s)"
 
-# ---------------------------------------------------------------------------
-# Step 5: Wait for ClickHouse
-# ---------------------------------------------------------------------------
-
-echo "[5/8] Waiting for ClickHouse (port 8123)..."
 WAITED=0
 while ! curl -sf http://localhost:8123/ping > /dev/null 2>&1; do
     if [ $WAITED -ge $MAX_WAIT ]; then
@@ -92,14 +88,12 @@ done
 echo "  ClickHouse is up"
 
 # ---------------------------------------------------------------------------
-# Step 6: Retrieve API key
+# Step 5: Bootstrap MongoDB (team, user, API key, traces source)
 # ---------------------------------------------------------------------------
 
-echo "[6/8] Bootstrapping HyperDX team, user, and source..."
-# Wait a moment for MongoDB to be ready
+echo "[5/6] Bootstrapping HyperDX team, user, and source..."
 sleep 3
 
-# Bootstrap team, user, and traces source (idempotent)
 API_KEY=$(docker exec hyperdx-local mongo --quiet --eval '
 db = db.getSiblingDB("hyperdx");
 
@@ -142,7 +136,6 @@ print(user.accessKey);
 ' 2>/dev/null || echo "")
 
 if [ -n "$API_KEY" ] && [ "$API_KEY" != "undefined" ] && [ "$API_KEY" != "null" ]; then
-    # Update .env with the API key (only if not already set)
     if grep -q "^HYPERDX_API_KEY=$" .env; then
         sed -i.bak "s/^HYPERDX_API_KEY=$/HYPERDX_API_KEY=$API_KEY/" .env && rm -f .env.bak
         echo "  API key saved to .env: $API_KEY"
@@ -155,23 +148,39 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 7: Generate demo traces
+# Step 6: Download and load sample data
 # ---------------------------------------------------------------------------
 
-echo "[7/8] Generating demo traces..."
-python generate_demo_data.py --count 100
-echo "  Demo traces generated"
+echo "[6/6] Loading ClickStack e-commerce sample data..."
 
-# ---------------------------------------------------------------------------
-# Step 8: Create default dashboards
-# ---------------------------------------------------------------------------
+# Download if not already present
+if [ ! -f sample.tar.gz ]; then
+    echo "  Downloading sample.tar.gz..."
+    curl -O https://storage.googleapis.com/hyperdx/sample.tar.gz
+    echo "  Downloaded"
+else
+    echo "  sample.tar.gz already exists, skipping download"
+fi
 
-echo "[8/8] Creating default dashboards..."
-# Wait for traces to be ingested
-sleep 5
-bash create_dashboard_mongo.sh --create
-bash dashboards/import_dashboards.sh cost-tracking
-echo "  Dashboards created"
+# Use the API key for ingestion auth
+INGEST_KEY="${API_KEY:-}"
+if [ -z "$INGEST_KEY" ]; then
+    # Try to read from .env
+    INGEST_KEY=$(grep '^HYPERDX_API_KEY=' .env | cut -d= -f2)
+fi
+
+echo "  Sending data to OTLP endpoint (this may take a few minutes)..."
+for filename in $(tar -tf sample.tar.gz); do
+    endpoint="http://localhost:4318/v1/${filename%.json}"
+    echo "  Loading ${filename%.json}..."
+    tar -xOf sample.tar.gz "$filename" | while read -r line; do
+        printf '%s\n' "$line" | curl -s -o /dev/null -X POST "$endpoint" \
+            -H "Content-Type: application/json" \
+            -H "authorization: ${INGEST_KEY}" \
+            --data-binary @-
+    done
+done
+echo "  Sample data loaded"
 
 # ---------------------------------------------------------------------------
 # Summary
@@ -189,10 +198,7 @@ echo "  OTLP HTTP:         http://localhost:4318"
 echo ""
 echo "  Next steps:"
 echo "    1. Open http://localhost:8080 in your browser"
-echo "    2. Go to Dashboards to see the auto-created dashboards"
-echo "    3. Generate more data:  python generate_demo_data.py --count 500"
-echo "    4. Query ClickHouse:    python query_clickhouse.py --summary"
-echo "    5. AI Dashboard Builder: python ai_dashboard_builder.py --dry-run"
-echo ""
-echo "  To use the AI Dashboard Builder, set ANTHROPIC_API_KEY in .env"
+echo "    2. Go to Search to explore the e-commerce sample data"
+echo "    3. Query ClickHouse:  python query_clickhouse.py --summary"
+echo "    4. Use /hyperdx-dashboard skill to create dashboards"
 echo ""

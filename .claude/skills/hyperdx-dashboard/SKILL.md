@@ -205,10 +205,9 @@ else:
 | Command | Purpose |
 |---------|---------|
 | `.venv/bin/python query_clickhouse.py --summary` | Data overview (counts, services) |
-| `.venv/bin/python query_clickhouse.py --attributes` | List all attributes |
+| `.venv/bin/python query_clickhouse.py --attributes` | List all attribute keys |
+| `.venv/bin/python query_clickhouse.py --services` | List all services |
 | `.venv/bin/python query_clickhouse.py --query "SQL"` | Run arbitrary ClickHouse SQL |
-| `.venv/bin/python generate_demo_data.py --count 100` | Generate synthetic LLM trace data |
-| `.venv/bin/python system-telemetry/generate_system_traces.py --count 10 --interval 5` | Generate system telemetry |
 
 ## References
 

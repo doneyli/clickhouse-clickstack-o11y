@@ -3,6 +3,4 @@ __pycache__/
 *.pyc
 .venv/
 venv/
-system-telemetry/bin/
-system-telemetry/.pids/
-system-telemetry/logs/
+sample.tar.gz
