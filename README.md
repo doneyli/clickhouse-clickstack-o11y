@@ -71,9 +71,16 @@ The skill definition lives in `.claude/skills/hyperdx-dashboard/` with reference
 
 ### Prerequisites
 
-- [Docker](https://docs.docker.com/get-docker/) (must be running — `docker info` should succeed)
+- [Docker](https://docs.docker.com/get-docker/) (must be running)
 - Python 3.9+
-- [Claude Code](https://code.claude.com/docs/en/overview) (for AI dashboard creation)
+- [Claude Code](https://code.claude.com/docs/en/overview) (for AI dashboard creation — the `/hyperdx-dashboard` skill is a Claude Code-specific skill defined in `.claude/`)
+
+Verify prerequisites before starting:
+
+```bash
+docker info > /dev/null 2>&1 && echo "Docker: OK" || echo "Docker: NOT RUNNING — start Docker Desktop first"
+python3 --version 2>&1 | grep -q "3\.\([9-9]\|[1-9][0-9]\)" && echo "Python: OK" || echo "Python: 3.9+ required"
+```
 
 ### Setup
 
@@ -92,15 +99,27 @@ cd clickhouse-clickstack-o11y
 5. Bootstraps MongoDB with a team, user, API key, and data sources
 6. Downloads and loads the e-commerce sample data via OTLP
 
-### Try it
+### Verify setup
 
-Once `setup.sh` completes, start streaming live data and create your first dashboard:
+After `setup.sh` completes, confirm everything is working:
 
 ```bash
 source .venv/bin/activate
-python stream_data.py --cycle 60 &     # Replay data with live timestamps
-python deploy_checkout_dashboard.py    # Deploy a pre-built dashboard
+python query_clickhouse.py --summary   # Should show span/log/metric counts and services
 ```
+
+If you see counts > 0 and a list of services, setup succeeded. If you get a connection error, check that Docker is running and the container is up (`docker compose ps`).
+
+### Try it
+
+Deploy a pre-built dashboard and optionally start streaming live data:
+
+```bash
+python deploy_checkout_dashboard.py                # Deploy a pre-built dashboard
+python stream_data.py --cycle 60 &                 # Optional: replay data with live timestamps
+```
+
+> **Note:** `stream_data.py` is optional. The sample data loaded by `setup.sh` is already in ClickHouse — streaming just adds continuously updating timestamps for Live Tail and time-range charts.
 
 Open **http://localhost:8080** and go to the Dashboards tab. To create a dashboard with AI instead, open Claude Code in this directory and try:
 
@@ -301,6 +320,16 @@ curl -X POST http://localhost:8000/api/v1/dashboards \
     }]
   }'
 ```
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `setup.sh` fails immediately | Docker not running | Start Docker Desktop, verify with `docker info` |
+| Port 8080 already in use | Another service on that port | Stop the conflicting service or change the port in `docker-compose.yaml` |
+| `query_clickhouse.py --summary` shows 0 counts | Data didn't load | Re-run `./setup.sh` (it's idempotent) |
+| `deploy_checkout_dashboard.py` returns 401 | API key mismatch | Re-run step 5 of setup: `./setup.sh` re-bootstraps MongoDB |
+| Container exits immediately | Not enough memory | Allocate at least 4 GB RAM to Docker |
 
 ### Stopping
 
