@@ -1,219 +1,199 @@
 ---
 name: hyperdx-dashboard
-description: Generates, validates, and deploys HyperDX dashboard definitions via the internal REST API. Covers chart layout, aggregation, Lucene filters, and the HyperDX log_stream schema. Use when creating, modifying, or fixing HyperDX dashboards.
+description: Generates, validates, and deploys ClickStack dashboard definitions via the internal REST API. Covers tile layout, aggregation, Lucene filters, and OTel-native schema discovery. Use when creating, modifying, or fixing dashboards.
 ---
 
-# HyperDX Dashboard Builder
+# ClickStack Dashboard Builder
 
 ## Workflow
 
-1. **Discover data** — Run `.venv/bin/python query_clickhouse.py --summary --attributes` to see available services, span names, and attributes in ClickHouse.
-   For metrics, also query: `.venv/bin/python query_clickhouse.py --query "SELECT DISTINCT name, data_type FROM metric_stream ORDER BY name"` or use the API: `curl -s http://localhost:8000/metrics/names -H "Authorization: Bearer {TOKEN}"`
-2. **Generate JSON** — Build the dashboard definition following the Chart Format below.
-3. **Validate** — For every chart, print the Post-Generation Validation Checklist from `references/rules.md` with `[ok]` or `[FAIL]` for each item. Fix all `[FAIL]` items before proceeding. Do NOT skip this step.
-4. **Deploy** — Use Python `requests` to POST to the HyperDX public API (`/api/v1/dashboards`) on port 8000.
-5. **Verify** — Open HyperDX UI at `http://localhost:8080/dashboards` and confirm charts render.
+1. **Discover data** — Query ClickHouse to see available tables, services, and attributes:
+   ```bash
+   # List tables
+   curl -s "http://localhost:8123/?user=api&password=api" --data "SHOW TABLES FROM default"
+
+   # Discover traces schema and services
+   curl -s "http://localhost:8123/?user=api&password=api" --data "SELECT ServiceName, count() AS cnt FROM otel_traces GROUP BY ServiceName ORDER BY cnt DESC"
+
+   # Discover trace attributes
+   curl -s "http://localhost:8123/?user=api&password=api" --data "SELECT DISTINCT arrayJoin(SpanAttributes.keys) AS attr FROM otel_traces ORDER BY attr LIMIT 100"
+
+   # Discover log attributes
+   curl -s "http://localhost:8123/?user=api&password=api" --data "SELECT DISTINCT arrayJoin(LogAttributes.keys) AS attr FROM otel_logs ORDER BY attr LIMIT 100"
+
+   # Discover metrics
+   curl -s "http://localhost:8123/?user=api&password=api" --data "SELECT DISTINCT MetricName FROM otel_metrics_gauge UNION ALL SELECT DISTINCT MetricName FROM otel_metrics_sum ORDER BY MetricName"
+
+   # Discover data sources
+   curl -s http://localhost:8000/sources | python3 -m json.tool
+   ```
+2. **Generate JSON** — Build the dashboard definition following the Tile Format below.
+3. **Validate** — For every tile, print the Post-Generation Validation Checklist from `references/rules.md` with `[ok]` or `[FAIL]` for each item. Fix all `[FAIL]` items before proceeding. Do NOT skip this step.
+4. **Deploy** — Use Python `requests` to POST to the ClickStack internal API (`/dashboards`) on port 8000. No auth required for local mode.
+5. **Verify** — Open ClickStack UI at `http://localhost:8080/dashboards` and confirm tiles render.
 
 ## CRITICAL: Always Use the API
 
-**NEVER insert dashboards directly into MongoDB.** Always use the HyperDX REST API.
-
-Both endpoints work (user's MongoDB team has been aligned with the local team):
+**NEVER insert dashboards directly into the database.** Always use the ClickStack REST API.
 
 ```
-# Public API v1 (recommended — matches official docs)
-POST http://localhost:8000/api/v1/dashboards
-GET  http://localhost:8000/api/v1/dashboards
-PUT  http://localhost:8000/api/v1/dashboards/{id}
-DELETE http://localhost:8000/api/v1/dashboards/{id}
-
-# Internal API (also works — uses same format as UI)
-POST http://localhost:8000/dashboards
-GET  http://localhost:8000/dashboards
-PUT  http://localhost:8000/dashboards/{id}
-DELETE http://localhost:8000/dashboards/{id}
+# Internal API (no auth required for local mode)
+POST   http://localhost:8000/dashboards          # Create dashboard
+GET    http://localhost:8000/dashboards          # List all dashboards
+DELETE http://localhost:8000/dashboards/{id}     # Delete dashboard
 ```
 
-**Auth:** `Authorization: Bearer {ACCESS_KEY}`
+**No auth needed** — ClickStack local mode handles team/user automatically.
 
-Get access key:
-```bash
-docker exec hyperdx-local mongo --quiet --eval \
-  'db=db.getSiblingDB("hyperdx"); print(db.users.findOne({}).accessKey)'
-```
-
-### Two endpoints, two formats
-
-Both endpoints read/write the same dashboards. The difference is the wire format:
-
-| | Public `/api/v1/dashboards` | Internal `/dashboards` |
-|---|---|---|
-| **Series source (logs/traces)** | `dataSource: "events"` (or `table: "logs"` — auto-converted) | `table: "logs"` |
-| **Series source (metrics)** | `dataSource: "metrics"` (or `table: "metrics"` — auto-converted) | `table: "metrics"` |
-| **Ratio mode** | `asRatio: false` | `seriesReturnType: "column"` |
-| **Response ID** | `id` | `_id` |
-| **Input accepts** | accepts `table` (auto-converts to `dataSource` in response) | internal format only |
-
-**Use the public `/api/v1/dashboards` endpoint** — it matches the official docs and accepts `table` for convenience (auto-converts to `dataSource`).
-
-## Chart Format (Public API)
+## Tile Format
 
 ```json
 {
   "name": "Dashboard Name",
-  "query": "",
   "tags": ["tag1", "tag2"],
-  "charts": [
+  "tiles": [
     {
       "id": "unique-kebab-id",
-      "name": "Chart Title",
-      "x": 0, "y": 0, "w": 6, "h": 3,
-      "series": [{
-        "type": "time",
-        "table": "logs",
-        "aggFn": "avg",
-        "field": "system.cpu.percent",
-        "where": "span_name:cpu-load-sample service:macos-system-monitor",
-        "groupBy": []
-      }],
-      "asRatio": false
+      "x": 0, "y": 0, "w": 12, "h": 3,
+      "config": {
+        "name": "Chart Title",
+        "source": "traces",
+        "select": [{
+          "aggFn": "avg",
+          "valueExpression": "Duration",
+          "aggCondition": ""
+        }],
+        "where": "service:my-service",
+        "whereLanguage": "lucene",
+        "groupBy": [],
+        "displayType": "line"
+      }
     }
   ]
 }
 ```
 
 Key points:
-- **`charts`** array (NOT `tiles`)
-- Each chart has `id`, `name`, `x`, `y`, `w`, `h`, `series`, `asRatio`
-- **`where`** uses Lucene syntax (NOT SQL)
-- **`field`** uses HyperDX field names (NOT ClickHouse column expressions)
-- **No** `source`, `displayType`, `whereLanguage`, or `granularity` fields
+- **`tiles`** array (NOT `charts`) with **`config`** containing **`select`** (NOT `series`)
+- **`source`**: `"traces"`, `"logs"`, or `"metrics"` — determines which ClickHouse table to query
+- **`select`** items: `aggFn` + `valueExpression` (ClickHouse column expression) + `aggCondition`
+- **`where`** uses Lucene syntax with `whereLanguage: "lucene"` required
+- **`groupBy`** is an array of objects: `[{"valueExpression": "ServiceName"}]`
+- **`displayType`**: `"line"`, `"stacked_bar"`, `"number"`, `"table"`, `"markdown"`
+- **Grid is 24 columns wide** — `x + w <= 24`
 
 ## Critical Rules
 
 | # | Rule | What breaks |
 |---|------|-------------|
-| 1 | `where` uses **Lucene syntax** | SQL syntax silently fails |
-| 2 | `field` uses HyperDX names (e.g., `system.cpu.percent`) | ClickHouse expressions like `_number_attributes['...']` won't work |
-| 3 | Top-level array is `charts`, not `tiles` | Dashboard shows empty |
-| 4 | Series `type` must be: `time`, `number`, `table`, `histogram`, `search`, `markdown` | Chart renders blank |
-| 5 | `aggFn` must be valid | **Standard:** `count`, `count_rate`, `sum`, `avg`, `min`, `max`, `p50`, `p90`, `p95`, `p99`, `count_distinct`, `avg_rate`, `sum_rate`, `min_rate`, `max_rate`, `p50_rate`, `p90_rate`, `p95_rate`, `p99_rate`. Invalid values fail silently. |
-| 6 | `numberFormat` required on `type: "number"` series | KPI tiles display raw |
-| 7 | Grid is 12 columns wide; `x + w <= 12` | Tiles overlap or overflow |
-| 8 | `field` is omitted (or absent) for `count` aggFn | Including a field with count may error |
-| 9 | `groupBy` is an array (e.g., `["span_name"]`) | Works for time charts to split by field |
-| 10 | Deploy via API only, never MongoDB direct insert | Wrong team ID → dashboard invisible |
-| 11 | `duration` is the field name for span duration (ms) | Not `_duration` |
-| 12 | No `source`, `displayType`, `whereLanguage`, `granularity`, `config`, `select` | Old MongoDB format fields — silently ignored or cause errors |
-| 13 | All series in a chart share identical `type` and `groupBy` | Mixed types or mismatched groupBy silently drops data |
-| 14 | Always emit: `asRatio: false`, `table: "logs"` (or `"metrics"` for metric data), `groupBy: []` on time series, `query: ""` at dashboard level | Omitting creates non-deterministic API behavior |
-| 15 | `h: 2` for KPI (`type: "number"`), `h: 3` for all others | Inconsistent heights break row alignment |
-| 16 | Chart `id`: descriptive kebab-case, max 36 chars | Omitting generates UUIDs — unreadable in debugging |
-| 17 | Metrics series require `metricDataType` and `field` in `"name - DataType"` format | Missing `metricDataType` → API error "Metric data type is required". Wrong field format → silently returns no data. |
-| 18 | **NEVER use `type:span` or `type:log`** in `where` clauses | The `type` column is internal to HyperDX and NOT searchable via Lucene. `type:span` silently returns 0 rows. To scope to spans, filter by `service:X` or use duration-based aggregations (logs have 0 duration). |
+| 1 | `where` uses **Lucene syntax** with `whereLanguage: "lucene"` | SQL syntax silently fails |
+| 2 | `valueExpression` uses ClickHouse column names (e.g., `Duration`, `ServiceName`) | HyperDX abstracted names (e.g., `duration`, `service`) don't work in valueExpression |
+| 3 | Top-level array is `tiles`, not `charts` | API validation error |
+| 4 | `displayType` must be valid | `"line"`, `"stacked_bar"`, `"number"`, `"table"`, `"markdown"` |
+| 5 | `aggFn` must be valid | **Standard:** `count`, `sum`, `avg`, `min`, `max`, `count_distinct`, `last_value`. **Quantile:** `quantile` with `level` field (0-1). Invalid values fail. |
+| 6 | `valueExpression: ""` for `count` aggFn | Including a column with count may error |
+| 7 | `numberFormat` on `displayType: "number"` tiles | KPI tiles display raw without formatting |
+| 8 | Grid is 24 columns wide; `x + w <= 24` | Tiles overlap or overflow |
+| 9 | `groupBy` is array of objects `[{"valueExpression": "Col"}]` or empty `[]` | Strings fail validation |
+| 10 | Deploy via API only — `POST http://localhost:8000/dashboards` | Direct DB inserts may cause issues |
+| 11 | `Duration` in `otel_traces` is **nanoseconds** (UInt64) | Not milliseconds — HyperDX UI handles display formatting |
+| 12 | `tags: []` required at dashboard level | API validation error |
+| 13 | All select items in a tile share the same `where`, `groupBy`, `displayType` | Per-item filtering uses `aggCondition` |
+| 14 | `whereLanguage: "lucene"` required on every tile config | Omitting may default to wrong language |
+| 15 | `h: 2` for KPI (`displayType: "number"`), `h: 3` for all others | Inconsistent heights break row alignment |
+| 16 | Tile `id`: descriptive kebab-case, max 36 chars | Omitting generates UUIDs — unreadable |
+| 17 | Metrics tiles need `metricName` and `metricDataType` in config | Missing fields → no data or API error |
+| 18 | **NEVER use `type:span` or `type:log`** in `where` clauses | Internal field — not searchable via Lucene |
 
 ## Lucene Where Syntax
 
 ```
-service:macos-system-monitor                    # Exact match
-span_name:cpu-load-sample                       # Exact match
-gen_ai.request.model:*                          # Field exists (any value)
-level:error                                     # Exact match
-span_name:cpu-load-sample service:my-service    # AND (space-separated)
-span_name:cpu-load-sample OR span_name:memory   # OR (explicit keyword)
-NOT level:error                                 # Negation
--level:error                                    # Negation (shorthand)
-body:"connection refused"                       # Exact phrase
-duration:>1000                                  # Comparison operators
-service:macos-*                                 # Wildcard
+service:my-service                                 # Exact match
+span_name:my-span                                  # Exact match
+level:error                                        # Exact match
+service:my-service span_name:my-span               # AND (space-separated)
+service:a OR service:b                             # OR (explicit keyword)
+NOT level:error                                    # Negation
+-level:error                                       # Negation (shorthand)
+body:"connection refused"                          # Exact phrase
+duration:>1000                                     # Comparison operators
+service:frontend-*                                 # Wildcard
 ```
 
-Precedence: `NOT` > `AND` (space) > `OR`. See `references/chart-format.md` for full syntax reference.
+Precedence: `NOT` > `AND` (space) > `OR`. Use parentheses for clarity.
 
-## HyperDX Field Names
+## Source Types & Column Names
 
-Use these in `field` and `where`, NOT ClickHouse column names:
+### Traces (`source: "traces"` → `otel_traces` table)
 
-| HyperDX Name | Maps To | Type |
-|--------------|---------|------|
-| `duration` | `_duration` | number |
-| `service` | `_service` | string |
-| `span_name` | `span_name` | string |
-| `level` | `severity_text` | string |
-| `body` | `_hdx_body` | string |
-| `host` | `_host` | string |
-| Custom attributes (e.g., `system.cpu.percent`) | `_number_attributes['system.cpu.percent']` | auto-detected |
-| Metric fields (e.g., `system.cpu.utilization - Gauge`) | From `/metrics/names` API or `metric_stream` table | metric |
+| Column | Type | Use in Lucene `where` |
+|--------|------|----------------------|
+| `Timestamp` | DateTime64(9) | — |
+| `TraceId` | String | — |
+| `SpanId` | String | — |
+| `SpanName` | LowCardinality(String) | `span_name:value` |
+| `ServiceName` | LowCardinality(String) | `service:value` |
+| `Duration` | UInt64 (nanoseconds) | `duration:>1000000` |
+| `StatusCode` | LowCardinality(String) | — |
+| `SpanAttributes` | Map(LowCardinality(String), String) | attribute name directly |
+| `ResourceAttributes` | Map(LowCardinality(String), String) | — |
 
-## Series Types
+### Logs (`source: "logs"` → `otel_logs` table)
 
-| type | Use | Extra fields |
-|------|-----|-------------|
-| `time` | Line/bar charts over time | `groupBy` array |
+| Column | Type | Use in Lucene `where` |
+|--------|------|----------------------|
+| `Timestamp` | DateTime64(9) | — |
+| `ServiceName` | LowCardinality(String) | `service:value` |
+| `SeverityText` | LowCardinality(String) | `level:error` |
+| `Body` | String | `body:"search term"` |
+| `LogAttributes` | Map(LowCardinality(String), String) | attribute name directly |
+| `ResourceAttributes` | Map(LowCardinality(String), String) | — |
+
+### Metrics (`source: "metrics"`)
+
+Metrics are split across tables by type: `otel_metrics_gauge`, `otel_metrics_sum`, `otel_metrics_histogram`, `otel_metrics_summary`.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `MetricName` | String | Metric name (e.g., `system.cpu.utilization`) |
+| `Value` | Float64 | The metric value |
+| `ServiceName` | LowCardinality(String) | Source service |
+| `Attributes` | Map(LowCardinality(String), String) | Metric attributes |
+| `TimeUnix` | DateTime64(9) | Timestamp |
+
+For metrics tiles, add to config: `"metricName": "metric.name"`, `"metricDataType": "Gauge"` (or `"Sum"`, `"Histogram"`, `"Summary"`).
+
+## Select Item Types
+
+### Standard aggregation
+```json
+{"aggFn": "avg", "valueExpression": "Duration", "aggCondition": ""}
+```
+
+### Count (no column)
+```json
+{"aggFn": "count", "valueExpression": "", "aggCondition": ""}
+```
+
+### Quantile (replaces p50/p90/p95/p99)
+```json
+{"aggFn": "quantile", "level": 0.95, "valueExpression": "Duration", "aggCondition": ""}
+```
+
+### Per-item filter (aggCondition)
+```json
+{"aggFn": "avg", "valueExpression": "Duration", "aggCondition": "ServiceName = 'checkout'"}
+```
+
+## Display Types
+
+| displayType | Use | Extra config fields |
+|-------------|-----|-------------------|
+| `line` | Line charts over time | `groupBy` array |
+| `stacked_bar` | Stacked bar charts | `groupBy` array |
 | `number` | KPI number tiles | `numberFormat` object |
-| `table` | Table display | `sortOrder` ("asc"/"desc") |
-| `histogram` | Histogram | |
-| `search` | Search results | `fields` array |
-| `markdown` | Markdown text | `content` string |
-
-## Metrics Charts
-
-When charting **metric data** (from the `metric_stream` ClickHouse table), series require three additional fields compared to logs/traces:
-
-1. **`table: "metrics"`** — NOT `"logs"`
-2. **`metricDataType`** — required string: `"Gauge"`, `"Sum"`, `"Histogram"`, or `"Summary"`
-3. **`field` format: `"metric.name - DataType"`** — e.g., `"system.cpu.utilization - Gauge"`, `"http.server.request.duration - Histogram"`
-
-### Discovering metrics
-
-```bash
-# Via ClickHouse — list all metric names and their data types
-.venv/bin/python query_clickhouse.py --query "SELECT DISTINCT name, data_type FROM metric_stream ORDER BY name"
-
-# Via HyperDX API — returns metric names in the "name - DataType" format
-curl -s http://localhost:8000/metrics/names -H "Authorization: Bearer {TOKEN}"
-```
-
-### Metrics `time` series example
-
-```json
-{
-  "type": "time",
-  "table": "metrics",
-  "aggFn": "avg",
-  "field": "system.cpu.utilization - Gauge",
-  "metricDataType": "Gauge",
-  "where": "",
-  "groupBy": []
-}
-```
-
-### Metrics `number` series (KPI) example
-
-```json
-{
-  "type": "number",
-  "table": "metrics",
-  "aggFn": "avg",
-  "field": "system.memory.usage - Sum",
-  "metricDataType": "Sum",
-  "where": "",
-  "numberFormat": {
-    "output": "byte",
-    "mantissa": 0,
-    "factor": 1,
-    "thousandSeparated": true,
-    "average": false,
-    "decimalBytes": true
-  }
-}
-```
-
-### Notes
-
-- **Sum-type metrics** support `_rate` aggFn variants (e.g., `sum_rate`, `avg_rate`, `count_rate`)
-- The `metricDataType` value must match the suffix in the `field` name (e.g., field `"... - Gauge"` → `metricDataType: "Gauge"`)
-- All other chart-level fields (`id`, `name`, `x`, `y`, `w`, `h`, `asRatio`) remain the same as logs charts
+| `table` | Table display | `groupBy` array |
+| `markdown` | Markdown text | `content` string in select |
 
 ## Deploy Pattern (Python)
 
@@ -221,62 +201,38 @@ curl -s http://localhost:8000/metrics/names -H "Authorization: Bearer {TOKEN}"
 import requests
 
 API = 'http://localhost:8000'
-TOKEN = '<access_key>'  # from MongoDB users.accessKey
-HEADERS = {'Authorization': f'Bearer {TOKEN}', 'Content-Type': 'application/json'}
 
 dashboard = {
     'name': 'My Dashboard',
-    'query': '',
     'tags': ['my-tag'],
-    'charts': [ ... ]
+    'tiles': [ ... ]
 }
 
-resp = requests.post(f'{API}/api/v1/dashboards', headers=HEADERS, json=dashboard)
-data = resp.json()['data']
+resp = requests.post(f'{API}/dashboards', json=dashboard)
+data = resp.json()
 print(f"URL: http://localhost:8080/dashboards/{data['id']}")
 ```
 
 ### Deploy Error Handling
 
-Always check `resp.status_code` after the POST:
-
 | Status | Cause | Fix |
 |--------|-------|-----|
-| `401` | Bad or expired access key | Re-fetch token: `docker exec hyperdx-local mongo --quiet --eval 'db=db.getSiblingDB("hyperdx"); print(db.users.findOne({}).accessKey)'` |
-| `400` | Malformed JSON (missing required fields, invalid types) | Re-validate against the checklist in `references/rules.md` |
-| `500` | Internal HyperDX/container error | Check container logs: `docker logs hyperdx-local --tail 50` |
+| `400` / validation error | Malformed JSON (missing required fields, invalid types) | Re-validate against the checklist in `references/rules.md` |
+| `500` | Internal container error | Check container logs: `docker logs clickstack-local --tail 50` |
 | Connection refused | Container not running | Start it: `docker compose up -d` |
 
-```python
-resp = requests.post(f'{API}/api/v1/dashboards', headers=HEADERS, json=dashboard)
-if resp.status_code != 200:
-    print(f"Deploy failed ({resp.status_code}): {resp.text}")
-else:
-    data = resp.json()['data']
-    print(f"URL: http://localhost:8080/dashboards/{data['id']}")
-```
+## Common Tile Patterns
 
-## Common Chart Patterns
+**4 KPIs across:** `w:6, h:2` at `x: 0, 6, 12, 18` on `y:0`
 
-**KPI row (4 across):** `w:3, h:2` at `x: 0, 3, 6, 9` on `y:0`
+**Half-width charts:** `w:12, h:3` at `x: 0, 12`
 
-**Half-width charts:** `w:6, h:3` at `x: 0, 6`
-
-**Full-width chart:** `w:12, h:3`
-
-## Project Tools
-
-| Command | Purpose |
-|---------|---------|
-| `.venv/bin/python query_clickhouse.py --summary` | Data overview (counts, services) |
-| `.venv/bin/python query_clickhouse.py --attributes` | List all attribute keys |
-| `.venv/bin/python query_clickhouse.py --services` | List all services |
-| `.venv/bin/python query_clickhouse.py --query "SQL"` | Run arbitrary ClickHouse SQL |
+**Full-width chart:** `w:24, h:3`
 
 ## References
 
 For detailed documentation, see:
 - [Chart format reference](references/chart-format.md) — Full field reference and schema
-- [ClickHouse schema](references/clickhouse-schema.md) — Complete log_stream schema and discovery queries
+- [Schema discovery](references/schema-discovery.md) — OTel-native schema and discovery queries
 - [Rules & validation checklist](references/rules.md) — All rules with post-generation checklist
-- [Working examples](references/examples.md) — Verified chart patterns and full dashboard examples
+- [Working examples](references/examples.md) — Verified tile patterns and full dashboard examples

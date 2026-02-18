@@ -1,291 +1,224 @@
 # Working Dashboard Examples
 
-All examples use the HyperDX Public API format (`charts`/`series`), deployed via `POST http://localhost:8000/api/v1/dashboards`.
+All examples use the ClickStack tiles format, deployed via `POST http://localhost:8000/dashboards`. No auth required for local mode.
 
-## Chart Patterns
+## Tile Patterns
 
-### 1. KPI Count Chart
+### 1. KPI Count Tile
 
 ```json
 {
   "id": "total-requests",
-  "name": "Total Requests",
-  "x": 0, "y": 0, "w": 3, "h": 2,
-  "series": [{
-    "type": "number",
-    "table": "logs",
-    "aggFn": "count",
+  "x": 0, "y": 0, "w": 6, "h": 2,
+  "config": {
+    "name": "Total Requests",
+    "source": "traces",
+    "select": [{"aggFn": "count", "valueExpression": "", "aggCondition": ""}],
     "where": "",
+    "whereLanguage": "lucene",
+    "groupBy": [],
+    "displayType": "number",
     "numberFormat": {
-      "output": "number",
-      "mantissa": 0,
-      "factor": 1,
-      "thousandSeparated": true,
-      "average": false,
-      "decimalBytes": false
+      "output": "number", "mantissa": 0, "factor": 1,
+      "thousandSeparated": true, "average": false, "decimalBytes": false
     }
-  }],
-  "asRatio": false
+  }
 }
 ```
 
-Note: No `field` for `count` aggFn. Uses the **Integer Count** numberFormat template.
+Note: `valueExpression: ""` for `count` aggFn. Uses the **Integer Count** numberFormat template.
 
-### 2. KPI Sum Chart
+### 2. KPI Avg Latency Tile
 
 ```json
 {
-  "id": "total-metric-value",
-  "name": "Total Metric Value",
-  "x": 3, "y": 0, "w": 3, "h": 2,
-  "series": [{
-    "type": "number",
-    "table": "logs",
-    "aggFn": "sum",
-    "field": "my.numeric.attribute",
+  "id": "avg-latency",
+  "x": 6, "y": 0, "w": 6, "h": 2,
+  "config": {
+    "name": "Avg Latency",
+    "source": "traces",
+    "select": [{"aggFn": "avg", "valueExpression": "Duration", "aggCondition": ""}],
     "where": "service:my-service",
+    "whereLanguage": "lucene",
+    "groupBy": [],
+    "displayType": "number",
     "numberFormat": {
-      "output": "number",
-      "mantissa": 0,
-      "factor": 1,
-      "thousandSeparated": true,
-      "average": false,
-      "decimalBytes": false
+      "output": "number", "mantissa": 2, "factor": 1,
+      "thousandSeparated": true, "average": false, "decimalBytes": false
     }
-  }],
-  "asRatio": false
+  }
 }
 ```
 
-### 3. KPI Avg Chart (Latency)
+Note: `Duration` is nanoseconds (UInt64). HyperDX UI handles display formatting.
 
-```json
-{
-  "id": "avg-latency-ms",
-  "name": "Avg Latency (ms)",
-  "x": 9, "y": 0, "w": 3, "h": 2,
-  "series": [{
-    "type": "number",
-    "table": "logs",
-    "aggFn": "avg",
-    "field": "duration",
-    "where": "service:my-service",
-    "numberFormat": {
-      "output": "number",
-      "mantissa": 2,
-      "factor": 1,
-      "thousandSeparated": true,
-      "average": false,
-      "decimalBytes": false
-    }
-  }],
-  "asRatio": false
-}
-```
-
-Note: Use `duration` (HyperDX field name), NOT `_duration`. Uses the **Latency ms** numberFormat template.
-
-### 4. Time-Series Chart (Count Over Time)
+### 3. Time-Series Line Chart
 
 ```json
 {
   "id": "requests-over-time",
-  "name": "Requests Over Time",
-  "x": 0, "y": 2, "w": 6, "h": 3,
-  "series": [{
-    "type": "time",
-    "table": "logs",
-    "aggFn": "count",
+  "x": 0, "y": 2, "w": 12, "h": 3,
+  "config": {
+    "name": "Requests Over Time",
+    "source": "traces",
+    "select": [{"aggFn": "count", "valueExpression": "", "aggCondition": ""}],
     "where": "service:my-service",
-    "groupBy": []
-  }],
-  "asRatio": false
+    "whereLanguage": "lucene",
+    "groupBy": [],
+    "displayType": "line"
+  }
 }
 ```
 
-### 5. Multi-Series Time Chart (Two Lines)
-
-```json
-{
-  "id": "two-metrics-over-time",
-  "name": "Two Metrics Over Time",
-  "x": 6, "y": 2, "w": 6, "h": 3,
-  "series": [
-    {
-      "type": "time",
-      "table": "logs",
-      "aggFn": "avg",
-      "field": "metric.one",
-      "where": "service:my-service",
-      "groupBy": []
-    },
-    {
-      "type": "time",
-      "table": "logs",
-      "aggFn": "avg",
-      "field": "metric.two",
-      "where": "service:my-service",
-      "groupBy": []
-    }
-  ],
-  "asRatio": false
-}
-```
-
-Multiple items in `series` array = multiple lines on the same chart.
-
-### 6. Time Chart with groupBy
+### 4. Time-Series with groupBy
 
 ```json
 {
   "id": "latency-by-service",
-  "name": "Latency by Service",
-  "x": 0, "y": 5, "w": 6, "h": 3,
-  "series": [{
-    "type": "time",
-    "table": "logs",
-    "aggFn": "avg",
-    "field": "duration",
+  "x": 0, "y": 5, "w": 12, "h": 3,
+  "config": {
+    "name": "Latency by Service",
+    "source": "traces",
+    "select": [{"aggFn": "avg", "valueExpression": "Duration", "aggCondition": ""}],
     "where": "",
-    "groupBy": ["service"]
-  }],
-  "asRatio": false
+    "whereLanguage": "lucene",
+    "groupBy": [{"valueExpression": "ServiceName"}],
+    "displayType": "line"
+  }
 }
 ```
 
-### 7. KPI with Custom Numeric Attribute
+Note: `groupBy` uses objects `{"valueExpression": "ColumnName"}`, not strings.
+
+### 5. Stacked Bar Chart
 
 ```json
 {
-  "id": "avg-custom-metric",
-  "name": "Avg Custom Metric",
-  "x": 0, "y": 0, "w": 3, "h": 2,
-  "series": [{
-    "type": "number",
-    "table": "logs",
-    "aggFn": "avg",
-    "field": "my.custom.metric",
-    "where": "span_name:my-operation service:my-service",
-    "numberFormat": {
-      "output": "number",
-      "mantissa": 2,
-      "factor": 1,
-      "thousandSeparated": true,
-      "average": false,
-      "decimalBytes": false
-    }
-  }],
-  "asRatio": false
-}
-```
-
-### 8. Table Chart (Top Spans by Count)
-
-```json
-{
-  "id": "top-spans-by-count",
-  "name": "Top Spans by Count",
-  "x": 0, "y": 8, "w": 6, "h": 3,
-  "series": [{
-    "type": "table",
-    "table": "logs",
-    "aggFn": "count",
-    "where": "service:my-service",
-    "groupBy": ["span_name"],
-    "sortOrder": "desc"
-  }],
-  "asRatio": false
-}
-```
-
-Note: `table` type requires `groupBy` and `sortOrder`. No `field` needed for `count` aggFn.
-
-### 9. Search Chart (Recent Error Events)
-
-```json
-{
-  "id": "recent-errors",
-  "name": "Recent Errors",
-  "x": 6, "y": 8, "w": 6, "h": 3,
-  "series": [{
-    "type": "search",
-    "table": "logs",
+  "id": "errors-by-service",
+  "x": 12, "y": 2, "w": 12, "h": 3,
+  "config": {
+    "name": "Errors by Service",
+    "source": "logs",
+    "select": [{"aggFn": "count", "valueExpression": "", "aggCondition": ""}],
     "where": "level:error",
-    "fields": ["service", "span_name", "body", "duration"]
-  }],
-  "asRatio": false
+    "whereLanguage": "lucene",
+    "groupBy": [{"valueExpression": "ServiceName"}],
+    "displayType": "stacked_bar"
+  }
 }
 ```
 
-Note: `search` type requires `fields` array. No `aggFn` or `groupBy`.
-
-### 10. Markdown Chart (Section Divider)
+### 6. Multi-Select Chart (Percentile Lines)
 
 ```json
 {
-  "id": "section-header",
-  "name": "Section Header",
-  "x": 0, "y": 11, "w": 12, "h": 3,
-  "series": [{
-    "type": "markdown",
-    "content": "## Section Title\nDescription text here."
-  }],
-  "asRatio": false
+  "id": "latency-percentiles",
+  "x": 0, "y": 8, "w": 12, "h": 3,
+  "config": {
+    "name": "Latency Percentiles",
+    "source": "traces",
+    "select": [
+      {"aggFn": "quantile", "level": 0.5, "valueExpression": "Duration", "aggCondition": ""},
+      {"aggFn": "quantile", "level": 0.95, "valueExpression": "Duration", "aggCondition": ""},
+      {"aggFn": "quantile", "level": 0.99, "valueExpression": "Duration", "aggCondition": ""}
+    ],
+    "where": "service:checkout",
+    "whereLanguage": "lucene",
+    "groupBy": [],
+    "displayType": "line"
+  }
 }
 ```
 
-Note: `markdown` type requires only `type` and `content`. No `table`, `aggFn`, `field`, or `where`.
+Note: Use `quantile` + `level` instead of `p50`/`p95`/`p99`.
 
-### 11. Metrics Time Chart (CPU Utilization)
+### 7. Multi-Select with aggCondition
 
 ```json
 {
-  "id": "cpu-utilization-over-time",
-  "name": "CPU Utilization Over Time",
-  "x": 0, "y": 11, "w": 6, "h": 3,
-  "series": [{
-    "type": "time",
-    "table": "metrics",
-    "aggFn": "avg",
-    "field": "system.cpu.utilization - Gauge",
-    "metricDataType": "Gauge",
+  "id": "svc-latency-comparison",
+  "x": 12, "y": 8, "w": 12, "h": 3,
+  "config": {
+    "name": "Service Latency Comparison",
+    "source": "traces",
+    "select": [
+      {"aggFn": "avg", "valueExpression": "Duration", "aggCondition": "ServiceName = 'payment'"},
+      {"aggFn": "avg", "valueExpression": "Duration", "aggCondition": "ServiceName = 'cart'"},
+      {"aggFn": "avg", "valueExpression": "Duration", "aggCondition": "ServiceName = 'shipping'"}
+    ],
     "where": "",
-    "groupBy": []
-  }],
-  "asRatio": false
+    "whereLanguage": "lucene",
+    "groupBy": [],
+    "displayType": "line"
+  }
 }
 ```
 
-Note: Metrics series require `table: "metrics"`, `metricDataType`, and `field` in `"name - DataType"` format. Discover metric names via `query_clickhouse.py --query "SELECT DISTINCT name, data_type FROM metric_stream"` or the `/metrics/names` API.
+Note: `aggCondition` provides per-select-item SQL filtering. `where` is shared across all select items.
 
-### 12. Metrics KPI Chart (Avg Memory Usage)
+### 8. Table Tile
+
+```json
+{
+  "id": "top-operations",
+  "x": 0, "y": 11, "w": 12, "h": 3,
+  "config": {
+    "name": "Top Operations by Count",
+    "source": "traces",
+    "select": [{"aggFn": "count", "valueExpression": "", "aggCondition": ""}],
+    "where": "service:checkout",
+    "whereLanguage": "lucene",
+    "groupBy": [{"valueExpression": "SpanName"}],
+    "displayType": "table"
+  }
+}
+```
+
+### 9. Metrics Time Chart
+
+```json
+{
+  "id": "cpu-utilization",
+  "x": 0, "y": 14, "w": 12, "h": 3,
+  "config": {
+    "name": "CPU Utilization Over Time",
+    "source": "metrics",
+    "select": [{"aggFn": "avg", "valueExpression": "Value", "aggCondition": ""}],
+    "where": "",
+    "whereLanguage": "lucene",
+    "groupBy": [],
+    "displayType": "line",
+    "metricName": "system.cpu.utilization",
+    "metricDataType": "Gauge"
+  }
+}
+```
+
+Note: Metrics tiles require `metricName` and `metricDataType` in config. `valueExpression` is always `"Value"` for metric aggregation.
+
+### 10. Metrics KPI Tile
 
 ```json
 {
   "id": "avg-memory-usage",
-  "name": "Avg Memory Usage",
-  "x": 6, "y": 11, "w": 3, "h": 2,
-  "series": [{
-    "type": "number",
-    "table": "metrics",
-    "aggFn": "avg",
-    "field": "system.memory.usage - Sum",
-    "metricDataType": "Sum",
+  "x": 12, "y": 14, "w": 6, "h": 2,
+  "config": {
+    "name": "Avg Memory Usage",
+    "source": "metrics",
+    "select": [{"aggFn": "avg", "valueExpression": "Value", "aggCondition": ""}],
     "where": "",
+    "whereLanguage": "lucene",
+    "groupBy": [],
+    "displayType": "number",
+    "metricName": "system.memory.usage",
+    "metricDataType": "Sum",
     "numberFormat": {
-      "output": "byte",
-      "mantissa": 0,
-      "factor": 1,
-      "thousandSeparated": true,
-      "average": false,
-      "decimalBytes": true
+      "output": "byte", "mantissa": 0, "factor": 1,
+      "thousandSeparated": true, "average": false, "decimalBytes": true
     }
-  }],
-  "asRatio": false
+  }
 }
 ```
-
-Note: Uses **Bytes** numberFormat template. The `metricDataType` value (`"Sum"`) must match the suffix in the `field` name (`"... - Sum"`).
 
 ## Deploy Pattern
 
@@ -293,34 +226,37 @@ Note: Uses **Bytes** numberFormat template. The `metricDataType` value (`"Sum"`)
 import requests
 
 API = 'http://localhost:8000'
-TOKEN = '<access_key>'  # Get via: docker exec hyperdx-local mongo --quiet --eval 'db=db.getSiblingDB("hyperdx"); print(db.users.findOne({}).accessKey)'
-HEADERS = {'Authorization': f'Bearer {TOKEN}', 'Content-Type': 'application/json'}
 
 dashboard = {
     'name': 'My Dashboard',
-    'query': '',
     'tags': ['my-tag'],
-    'charts': [ ... ]
+    'tiles': [ ... ]
 }
 
-resp = requests.post(f'{API}/api/v1/dashboards', headers=HEADERS, json=dashboard)
-data = resp.json()['data']
+resp = requests.post(f'{API}/dashboards', json=dashboard)
+data = resp.json()
 print(f"URL: http://localhost:8080/dashboards/{data['id']}")
 ```
 
-## Key Differences from Old MongoDB Format
+## Key Differences from v1 Format
 
-| Old (MongoDB) | New (API) |
-|---------------|-----------|
-| `tiles` array | `charts` array |
-| `config.name` | `name` (top-level on chart) |
-| `config.select[].aggFn` | `series[].aggFn` |
-| `config.select[].valueExpression` | `series[].field` (HyperDX name) |
-| `config.where` (SQL) | `series[].where` (Lucene) |
-| `config.whereLanguage: "sql"` | Not needed — always Lucene |
-| `config.displayType: "line"` | `series[].type: "time"` |
-| `config.displayType: "number"` | `series[].type: "number"` |
-| `config.source: "{{ID}}"` | Not needed — API handles routing |
-| `_number_attributes['x']` in valueExpression | `x` in field (plain name) |
-| `_duration` | `duration` |
-| `_service` | `service` |
+| v1 (charts/series) | v2 (tiles/config/select) |
+|--------------------|--------------------------|
+| `charts` array | `tiles` array |
+| `chart.name` | `tile.config.name` |
+| `series[].aggFn` | `select[].aggFn` |
+| `series[].field` (HyperDX name) | `select[].valueExpression` (ClickHouse column) |
+| `series[].where` (per-series) | `config.where` (shared) + `select[].aggCondition` (per-item) |
+| `series[].type: "time"` | `config.displayType: "line"` |
+| `series[].type: "number"` | `config.displayType: "number"` |
+| `series[].type: "table"` | `config.displayType: "table"` |
+| `series[].groupBy: ["field"]` | `config.groupBy: [{"valueExpression": "Col"}]` |
+| `series[].table: "logs"` | `config.source: "traces"` / `"logs"` |
+| `chart.asRatio: false` | Not needed |
+| `dashboard.query: ""` | Not needed |
+| 12-col grid | 24-col grid |
+| `p50`/`p95`/`p99` aggFn | `quantile` + `level` |
+| `field: "duration"` | `valueExpression: "Duration"` |
+| `field: "service"` → groupBy | `groupBy: [{"valueExpression": "ServiceName"}]` |
+| Bearer token auth | No auth (local mode) |
+| `POST /api/v1/dashboards` | `POST /dashboards` |

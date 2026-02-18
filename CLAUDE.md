@@ -4,38 +4,51 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ClickStack Sample Data Demo — loads the [ClickStack e-commerce sample data](https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started/sample-data) into a local HyperDX instance for exploration and dashboard building. Uses a single HyperDX Local container (ClickHouse + MongoDB + OTel Collector + UI) with Python tooling for data querying and AI-powered dashboard creation via Claude.
+ClickStack Sample Data Demo — loads the [ClickStack e-commerce sample data](https://clickhouse.com/docs/use-cases/observability/clickstack/getting-started/sample-data) into a local ClickStack instance for exploration and dashboard building. Uses a single ClickStack Local container (ClickHouse + OTel Collector + HyperDX UI) with Python tooling for AI-powered dashboard creation via Claude.
 
 ## Setup & Common Commands
 
 ```bash
-./setup.sh                                    # Full idempotent setup (6 steps)
+./setup.sh                                    # Full idempotent setup (5 steps)
 source .venv/bin/activate                     # Activate Python venv (created by setup.sh)
-docker compose up -d                          # Start HyperDX container
+docker compose up -d                          # Start ClickStack container
 ```
 
 ### Query ClickHouse
+
 ```bash
-python query_clickhouse.py --summary       # Data overview (counts, services, time range)
-python query_clickhouse.py --attributes    # All string and number attribute keys
-python query_clickhouse.py --services      # All services
-python query_clickhouse.py --query "SELECT count(*) FROM log_stream WHERE type='span'"
+# From outside the container (use api user)
+curl -s "http://localhost:8123/?user=api&password=api" --data "SHOW TABLES FROM default"
+curl -s "http://localhost:8123/?user=api&password=api" --data "SELECT ServiceName, count() FROM otel_traces GROUP BY ServiceName ORDER BY count() DESC"
+
+# From inside the container
+docker exec clickstack-local clickhouse-client --query "SELECT count() FROM otel_traces"
 ```
 
 ## Architecture
 
-All services run inside a single Docker container (`hyperdx-local`):
+All services run inside a single Docker container (`clickstack-local`):
 - **OTel Collector** — receives OTLP on ports 4317 (gRPC) / 4318 (HTTP)
-- **ClickHouse** — stores all data in `log_stream` table (port 8123)
-- **MongoDB** — stores dashboards, teams, users, sources
+- **ClickHouse** — stores data in OTel-native tables (port 8123)
 - **HyperDX UI** — port 8080
-- **HyperDX Internal API** — port 8000
+- **ClickStack Internal API** — port 8000
 
-Data flow: `sample.tar.gz` → OTLP HTTP (4318) → OTel Collector → ClickHouse `log_stream` → HyperDX UI
+Data flow: `sample.tar.gz` → OTLP HTTP (4318) → OTel Collector → ClickHouse → HyperDX UI
+
+### ClickHouse Tables
+
+| Table | Contents |
+|-------|----------|
+| `otel_traces` | Distributed traces (spans) |
+| `otel_logs` | Log events |
+| `otel_metrics_gauge` | Gauge metrics |
+| `otel_metrics_sum` | Sum/counter metrics |
+| `otel_metrics_histogram` | Histogram metrics |
+| `otel_metrics_summary` | Summary metrics |
 
 ### Sample Data
 
-The data comes from the [OpenTelemetry Demo](https://opentelemetry.io/docs/demo/) — a simulated e-commerce store with microservices. It includes traces, logs, and metrics. Run `python query_clickhouse.py --services` and `--attributes` to discover available services and attributes.
+The data comes from the [OpenTelemetry Demo](https://opentelemetry.io/docs/demo/) — a simulated e-commerce store with microservices. It includes traces, logs, and metrics. Query ClickHouse directly to discover available services and attributes.
 
 ## Dashboard Creation
 
@@ -43,82 +56,84 @@ The data comes from the [OpenTelemetry Demo](https://opentelemetry.io/docs/demo/
 
 When creating, modifying, or fixing dashboards, **always invoke the `/hyperdx-dashboard` skill**. It encapsulates the complete workflow: discover data via ClickHouse, generate the dashboard JSON, validate against all rules, deploy via the API, and verify in the UI. The skill's reference docs live in `.claude/skills/hyperdx-dashboard/references/`.
 
-### HyperDX Dashboard API
+### ClickStack Dashboard API
 
-Official API docs: https://www.hyperdx.io/docs/api/dashboards
+No auth required for local mode.
 
-Both endpoints work locally and read/write the same dashboards:
-
-| Endpoint | Format differences |
-|---|---|
-| `POST http://localhost:8000/api/v1/dashboards` (public, recommended) | Uses `table: "logs"` (accepted, auto-converts to `dataSource`), `asRatio: false` |
-| `POST http://localhost:8000/dashboards` (internal) | Uses `table: "logs"`, `seriesReturnType: "column"` |
-
-**Auth:** `Authorization: Bearer {ACCESS_KEY}` — get token:
-```bash
-docker exec hyperdx-local mongo --quiet --eval \
-  'db=db.getSiblingDB("hyperdx"); print(db.users.findOne({}).accessKey)'
+```
+POST   http://localhost:8000/dashboards          # Create dashboard
+GET    http://localhost:8000/dashboards          # List all dashboards
+DELETE http://localhost:8000/dashboards/{id}     # Delete dashboard
 ```
 
-**NEVER insert dashboards directly into MongoDB** — direct inserts assign the wrong team ID and dashboards silently won't appear in the UI.
-
-### Dashboard JSON format (public API)
+### Dashboard JSON format (tiles)
 
 ```json
 {
   "name": "Dashboard Name",
-  "charts": [
+  "tags": [],
+  "tiles": [
     {
       "id": "unique-kebab-id",
-      "name": "Chart Title",
-      "x": 0, "y": 0, "w": 6, "h": 3,
-      "series": [{
-        "type": "time",
-        "table": "logs",
-        "aggFn": "avg",
-        "field": "duration",
+      "x": 0, "y": 0, "w": 12, "h": 3,
+      "config": {
+        "name": "Chart Title",
+        "source": "traces",
+        "select": [{
+          "aggFn": "avg",
+          "valueExpression": "Duration",
+          "aggCondition": ""
+        }],
         "where": "service:my-service",
-        "groupBy": []
-      }],
-      "asRatio": false
+        "whereLanguage": "lucene",
+        "groupBy": [{"valueExpression": "ServiceName"}],
+        "displayType": "line"
+      }
     }
   ]
 }
 ```
 
 Key rules:
-- **`charts` array** (NOT `tiles`) with **`series`** (NOT `config`/`select`)
-- **`where` uses Lucene syntax** — `span_name:value service:name` (NOT SQL)
-- **`field` uses HyperDX names** — `duration`, `service`, `span_name` and custom attributes by name (NOT ClickHouse columns like `_duration`, `_service`, `_number_attributes[...]`)
-- **No** `source`, `displayType`, `whereLanguage`, `granularity` fields
-- **`numberFormat` required** on `type: "number"` KPI tiles
-- **Omit `field`** for `count` aggFn
-- **Grid is 12 columns wide** — `x + w <= 12`
-- Valid `aggFn`: count, count_rate, sum, avg, min, max, p50, p90, p95, p99, count_distinct, plus `_rate` variants
-- Valid series `type`: time, number, table, histogram, search, markdown
-- **For metrics:** use `table: "metrics"`, add `metricDataType` (`"Gauge"`, `"Sum"`, `"Histogram"`, `"Summary"`), and `field` in `"name - DataType"` format (e.g., `"system.cpu.utilization - Gauge"`)
+- **`tiles` array** with **`config`** containing **`select`** (NOT `charts`/`series`)
+- **`source`**: `"traces"`, `"logs"`, or `"metrics"`
+- **`select`** items: `aggFn` + `valueExpression` (ClickHouse column) + `aggCondition`
+- **`where` uses Lucene syntax** with `whereLanguage: "lucene"` required
+- **`groupBy`** is objects: `[{"valueExpression": "ColumnName"}]` (NOT strings)
+- **Grid is 24 columns wide** — `x + w <= 24`
+- **`tags: []`** required at dashboard level
+- Valid `aggFn`: count, sum, avg, min, max, count_distinct, last_value, quantile (with level)
+- Valid `displayType`: line, stacked_bar, number, table, markdown
+- **For metrics:** add `metricName` and `metricDataType` to config
+- **Quantile** replaces p50/p90/p95/p99: use `aggFn: "quantile"` with `level: 0.95`
 
 ## Critical Gotchas
 
-- **`log_stream`** stores spans, logs, and events. **`metric_stream`** stores metrics.
-- **`_duration` is already milliseconds** — Float64, no conversion needed.
-- **MongoDB shell is `mongo` not `mongosh`** — HyperDX Local uses legacy shell.
-- **NEVER use `type:span` or `type:log` in Lucene `where` clauses** — The `type` column is internal to HyperDX and not searchable via Lucene. Using it silently returns 0 rows. Instead, filter by `service:X` or rely on field-based aggregations (e.g., `duration` only applies to spans).
+- **`otel_traces`** stores spans. **`otel_logs`** stores logs. **`otel_metrics_*`** stores metrics.
+- **`Duration` is nanoseconds** — UInt64 in `otel_traces`. HyperDX UI handles display formatting.
+- **`valueExpression` uses ClickHouse column names** — `Duration`, `ServiceName`, `SpanName` (NOT HyperDX names like `duration`, `service`).
+- **Lucene `where` still uses HyperDX field names** — `service:X`, `span_name:X`, `level:error` (HyperDX maps these to column expressions).
+- **NEVER use `type:span` or `type:log` in Lucene `where` clauses** — not searchable, silently returns 0 rows.
+- **ClickHouse access from outside** uses `user=api&password=api` — the `default` user is restricted to localhost inside the container.
 
-## ClickHouse `log_stream` Schema (Key Columns)
+## ClickHouse Schema (Key Columns)
 
-These column names are for **direct ClickHouse SQL queries** (`query_clickhouse.py`). Dashboard `field` values use HyperDX names instead (see mapping below).
+### `otel_traces`
 
-| Column | Type | HyperDX field name |
-|---|---|---|
-| `_service` | String | `service` |
-| `span_name` | String | `span_name` |
-| `_duration` | Float64 (ms) | `duration` |
-| `severity_text` | String | `level` |
-| `_hdx_body` | String | `body` |
-| `type` | String | `hyperdx_event_type` |
-| `_string_attributes` | Map(String, String) | attribute name directly |
-| `_number_attributes` | Map(String, Float64) | attribute name directly |
-| `_timestamp_sort_key` | DateTime | — |
+| Column | Type | Lucene field |
+|--------|------|-------------|
+| `ServiceName` | LowCardinality(String) | `service` |
+| `SpanName` | LowCardinality(String) | `span_name` |
+| `Duration` | UInt64 (nanoseconds) | `duration` |
+| `StatusCode` | LowCardinality(String) | — |
+| `SpanAttributes` | Map(String, String) | attribute name directly |
+| `ResourceAttributes` | Map(String, String) | — |
 
-Run `python query_clickhouse.py --attributes` to discover available attribute keys in the loaded sample data.
+### `otel_logs`
+
+| Column | Type | Lucene field |
+|--------|------|-------------|
+| `ServiceName` | LowCardinality(String) | `service` |
+| `SeverityText` | LowCardinality(String) | `level` |
+| `Body` | String | `body` |
+| `LogAttributes` | Map(String, String) | attribute name directly |

@@ -1,203 +1,163 @@
-# Chart Format — Complete Reference
+# Tile Format — Complete Reference
 
 ## API Endpoint
 
-Use the **public** endpoint (matches official docs, accepts `table` for convenience):
-
 ```
-POST http://localhost:8000/api/v1/dashboards
-Authorization: Bearer {ACCESS_KEY}
+POST http://localhost:8000/dashboards
 Content-Type: application/json
 ```
+
+No auth required for ClickStack local mode.
 
 ## Dashboard JSON Schema
 
 ```json
 {
   "name": "Dashboard Name",
-  "query": "",
   "tags": ["tag1", "tag2"],
-  "charts": [ /* chart objects */ ]
+  "tiles": [ /* tile objects */ ]
 }
 ```
 
-## Chart JSON Schema
+Required fields: `name`, `tags` (array, can be empty), `tiles` (array).
+
+## Tile JSON Schema
 
 ```json
 {
   "id": "unique-kebab-case-id",
-  "name": "Human Readable Name",
   "x": 0,
   "y": 0,
-  "w": 6,
+  "w": 12,
   "h": 3,
-  "series": [
-    {
-      "type": "time",
-      "table": "logs",
-      "aggFn": "avg",
-      "field": "system.cpu.percent",
-      "where": "span_name:cpu-load-sample service:macos-system-monitor",
-      "groupBy": [],
-      "numberFormat": {}
-    }
-  ],
-  "asRatio": false
+  "config": {
+    "name": "Human Readable Name",
+    "source": "traces",
+    "select": [
+      {
+        "aggFn": "avg",
+        "valueExpression": "Duration",
+        "aggCondition": ""
+      }
+    ],
+    "where": "service:my-service",
+    "whereLanguage": "lucene",
+    "groupBy": [],
+    "displayType": "line"
+  }
 }
 ```
 
-## Chart-Level Fields
+## Tile-Level Fields
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
 | `id` | string | Yes | Unique kebab-case identifier, max 36 chars |
-| `name` | string | Yes | Displayed as chart title |
-| `x` | number | Yes | Column position, 0–11 |
+| `x` | number | Yes | Column position, 0–23 (24-col grid) |
 | `y` | number | Yes | Row position (0-based) |
-| `w` | number | Yes | Width in grid units, 1–12 |
+| `w` | number | Yes | Width in grid units, 1–24 |
 | `h` | number | Yes | Height in grid units, typically 2 (KPI) or 3 (chart) |
-| `series` | array | Yes | 1+ series objects (see below) |
-| `asRatio` | boolean | Yes | Always `false`. Required by this skill for determinism. |
+| `config` | object | Yes | Tile configuration (see below) |
 
-## Series Fields
+## Config Fields
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
-| `type` | string | Yes | `time`, `number`, `table`, `histogram`, `search`, `markdown` |
-| `table` | string | Yes* | `"logs"` for traces/spans/logs, `"metrics"` for metrics. Not needed for markdown. When using `"metrics"`, `metricDataType` is also required and `field` must use `"name - DataType"` format. |
-| `aggFn` | string | Yes* | Aggregation function (see below). Not needed for search/markdown. |
-| `field` | string | No | HyperDX field name to aggregate. Omit for `count`. |
-| `where` | string | No | Lucene query filter (default: empty = match all) |
-| `groupBy` | array | No | Array of field names to group by (time charts only) |
-| `numberFormat` | object | No | Required for `type: "number"` KPI tiles |
-| `sortOrder` | string | No | `"desc"` or `"asc"` (table type only) |
-| `fields` | array | No | Column list (search type only) |
-| `content` | string | No | Markdown text (markdown type only) |
-| `metricDataType` | string | No* | Required for metrics series (`table: "metrics"`). Valid values: `"Gauge"`, `"Sum"`, `"Histogram"`, `"Summary"`. |
+| `name` | string | Yes | Displayed as tile title |
+| `source` | string | Yes | `"traces"`, `"logs"`, or `"metrics"` |
+| `select` | array | Yes | 1+ select item objects (see below) |
+| `where` | string | Yes | Lucene query filter (empty string = match all) |
+| `whereLanguage` | string | Yes | Always `"lucene"` |
+| `groupBy` | array | Yes | Array of `{"valueExpression": "Col"}` objects, or `[]` |
+| `displayType` | string | Yes | `"line"`, `"stacked_bar"`, `"number"`, `"table"`, `"markdown"` |
+| `numberFormat` | object | No | Required for `displayType: "number"` |
+| `metricName` | string | No | Required for metrics tiles — the metric name |
+| `metricDataType` | string | No | Required for metrics tiles — `"Gauge"`, `"Sum"`, `"Histogram"`, `"Summary"` |
 
-## Mandatory Fields by Series Type
+## Select Item Fields
 
-For each series type, emit **exactly** these fields — no more, no less (except `field` which is omitted for `count` aggFn).
-
-### `time` series
-```json
-{
-  "type": "time",
-  "table": "logs",
-  "aggFn": "avg",
-  "field": "duration",
-  "where": "span_name:my-span",
-  "groupBy": []
-}
-```
-**Required:** `type`, `table`, `aggFn`, `where`, `groupBy`. Also `field` unless aggFn is `count`.
-
-### `number` series (KPI)
-```json
-{
-  "type": "number",
-  "table": "logs",
-  "aggFn": "avg",
-  "field": "duration",
-  "where": "span_name:my-span",
-  "numberFormat": {
-    "output": "number",
-    "mantissa": 2,
-    "factor": 1,
-    "thousandSeparated": true,
-    "average": false,
-    "decimalBytes": false
-  }
-}
-```
-**Required:** `type`, `table`, `aggFn`, `where`, `numberFormat`. Also `field` unless aggFn is `count`. No `groupBy`.
-
-### `table` series
-```json
-{
-  "type": "table",
-  "table": "logs",
-  "aggFn": "count",
-  "where": "service:my-service",
-  "groupBy": ["span_name"],
-  "sortOrder": "desc"
-}
-```
-**Required:** `type`, `table`, `aggFn`, `where`, `groupBy`, `sortOrder`. Also `field` unless aggFn is `count`.
-
-### `histogram` series
-```json
-{
-  "type": "histogram",
-  "table": "logs",
-  "field": "duration",
-  "where": "service:my-service"
-}
-```
-**Required:** `type`, `table`, `field`, `where`. No `aggFn`, no `groupBy`.
-
-### `search` series
-```json
-{
-  "type": "search",
-  "table": "logs",
-  "where": "level:error",
-  "fields": ["service", "span_name", "body", "duration"]
-}
-```
-**Required:** `type`, `table`, `where`, `fields`. No `aggFn`, no `groupBy`.
-
-### `markdown` series
-```json
-{
-  "type": "markdown",
-  "content": "## Section Title\nDescription text here."
-}
-```
-**Required:** `type`, `content` only. No `table`, `aggFn`, `field`, `where`, or `groupBy`.
-
-### Metrics `time` series
-```json
-{
-  "type": "time",
-  "table": "metrics",
-  "aggFn": "avg",
-  "field": "system.cpu.utilization - Gauge",
-  "metricDataType": "Gauge",
-  "where": "",
-  "groupBy": []
-}
-```
-**Required:** `type`, `table` (`"metrics"`), `aggFn`, `field` (in `"name - DataType"` format), `metricDataType`, `where`, `groupBy`. Also `field` is always required for metrics (no bare `count`).
-
-### Metrics `number` series (KPI)
-```json
-{
-  "type": "number",
-  "table": "metrics",
-  "aggFn": "avg",
-  "field": "system.cpu.utilization - Gauge",
-  "metricDataType": "Gauge",
-  "where": "",
-  "numberFormat": {
-    "output": "percent",
-    "mantissa": 1,
-    "factor": 1,
-    "thousandSeparated": true,
-    "average": false,
-    "decimalBytes": false
-  }
-}
-```
-**Required:** `type`, `table` (`"metrics"`), `aggFn`, `field` (in `"name - DataType"` format), `metricDataType`, `where`, `numberFormat`. No `groupBy`.
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `aggFn` | string | Yes | Aggregation function (see below) |
+| `valueExpression` | string | Yes | ClickHouse column expression to aggregate. Empty `""` for count. |
+| `aggCondition` | string | Yes | Per-item SQL filter condition. Empty `""` for no per-item filter. |
+| `level` | number | For quantile | 0–1 quantile level (e.g., 0.95 for P95). Required when `aggFn: "quantile"`. |
 
 ## Valid `aggFn` Values
 
-**Valid values:** `count`, `count_rate`, `sum`, `avg`, `min`, `max`, `p50`, `p90`, `p95`, `p99`, `count_distinct`, `avg_rate`, `sum_rate`, `min_rate`, `max_rate`, `p50_rate`, `p90_rate`, `p95_rate`, `p99_rate`
+**Standard:** `count`, `sum`, `avg`, `min`, `max`, `count_distinct`, `last_value`
+
+**Quantile:** `quantile` (requires `level` field, e.g., 0.5, 0.9, 0.95, 0.99)
+
+**Merge variants:** `quantileMerge`, `histogram`, `histogramMerge`
+
+## Mandatory Config by displayType
+
+### `line` / `stacked_bar` (time series)
+```json
+{
+  "name": "Chart Title",
+  "source": "traces",
+  "select": [{"aggFn": "avg", "valueExpression": "Duration", "aggCondition": ""}],
+  "where": "service:my-service",
+  "whereLanguage": "lucene",
+  "groupBy": [],
+  "displayType": "line"
+}
+```
+**Required:** `name`, `source`, `select`, `where`, `whereLanguage`, `groupBy`, `displayType`.
+
+### `number` (KPI)
+```json
+{
+  "name": "Total Requests",
+  "source": "traces",
+  "select": [{"aggFn": "count", "valueExpression": "", "aggCondition": ""}],
+  "where": "",
+  "whereLanguage": "lucene",
+  "groupBy": [],
+  "displayType": "number",
+  "numberFormat": {
+    "output": "number", "mantissa": 0, "factor": 1,
+    "thousandSeparated": true, "average": false, "decimalBytes": false
+  }
+}
+```
+**Required:** All standard fields plus `numberFormat`.
+
+### `table`
+```json
+{
+  "name": "Top Operations",
+  "source": "traces",
+  "select": [{"aggFn": "count", "valueExpression": "", "aggCondition": ""}],
+  "where": "service:my-service",
+  "whereLanguage": "lucene",
+  "groupBy": [{"valueExpression": "SpanName"}],
+  "displayType": "table"
+}
+```
+**Required:** All standard fields. `groupBy` typically non-empty for useful tables.
+
+### Metrics time series
+```json
+{
+  "name": "CPU Utilization",
+  "source": "metrics",
+  "select": [{"aggFn": "avg", "valueExpression": "Value", "aggCondition": ""}],
+  "where": "",
+  "whereLanguage": "lucene",
+  "groupBy": [],
+  "displayType": "line",
+  "metricName": "system.cpu.utilization",
+  "metricDataType": "Gauge"
+}
+```
+**Required:** All standard fields plus `metricName` and `metricDataType`.
 
 ## numberFormat Object
 
-Required for `type: "number"` (KPI tiles).
+Required for `displayType: "number"` KPI tiles.
 
 | Field | Type | Notes |
 |-------|------|-------|
@@ -210,102 +170,108 @@ Required for `type: "number"` (KPI tiles).
 
 ## numberFormat Templates
 
-Use these canonical templates verbatim for KPI (`type: "number"`) charts. Always include all 6 fields.
-
 ### Integer Count
 ```json
 "numberFormat": {"output": "number", "mantissa": 0, "factor": 1, "thousandSeparated": true, "average": false, "decimalBytes": false}
 ```
-Use for: request counts, token totals, event counts.
 
-### Latency ms
+### Latency
 ```json
 "numberFormat": {"output": "number", "mantissa": 2, "factor": 1, "thousandSeparated": true, "average": false, "decimalBytes": false}
 ```
-Use for: avg/p50/p90/p95/p99 latency, duration metrics.
 
 ### Percentage
 ```json
 "numberFormat": {"output": "percent", "mantissa": 1, "factor": 1, "thousandSeparated": true, "average": false, "decimalBytes": false}
 ```
-Use for: CPU %, memory %, error rates (when pre-computed as 0–1 ratio).
 
 ### Bytes
 ```json
 "numberFormat": {"output": "byte", "mantissa": 0, "factor": 1, "thousandSeparated": true, "average": false, "decimalBytes": true}
 ```
-Use for: memory usage, disk I/O, network bytes.
-
-### Decimal
-```json
-"numberFormat": {"output": "number", "mantissa": 2, "factor": 1, "thousandSeparated": true, "average": false, "decimalBytes": false}
-```
-Use for: load averages, scores, ratios, any decimal metric.
 
 ## Lucene Where Syntax
 
 ```
-service:macos-system-monitor                    # Exact match
-span_name:cpu-load-sample                       # Exact match
-gen_ai.request.model:*                          # Field exists (any value)
-level:error                                     # Exact match
-span_name:cpu-load-sample service:my-service    # AND (space-separated)
-span_name:cpu-load-sample OR span_name:memory   # OR (explicit keyword)
-NOT level:error                                 # NOT (negation prefix)
--level:error                                    # Negation (shorthand for NOT)
-body:"connection refused"                       # Quoted string (exact phrase)
-duration:>1000                                  # Greater than
-duration:>=500                                  # Greater than or equal
-duration:<100                                   # Less than
-service:macos-*                                 # Wildcard (partial match)
+service:my-service                                 # Exact match
+span_name:my-operation                             # Exact match
+level:error                                        # Exact match
+service:my-service span_name:my-op                 # AND (space-separated)
+service:a OR service:b                             # OR (explicit keyword)
+NOT level:error                                    # Negation
+-level:error                                       # Negation (shorthand)
+body:"connection refused"                          # Exact phrase
+duration:>1000000                                  # Greater than (nanoseconds for traces)
+service:frontend-*                                 # Wildcard
 ```
 
-**Precedence:** `NOT` binds tightest, then `AND` (space), then `OR`. Use parentheses for clarity: `(service:a OR service:b) NOT level:error`.
+**Precedence:** `NOT` > `AND` (space) > `OR`. Use parentheses for clarity.
 
-## HyperDX Field Names
+## Lucene Field Names (for `where`)
 
-Use these names in `field` and `where`, NOT ClickHouse column expressions:
+Lucene field names are mapped by HyperDX from the source expression definitions:
 
-| HyperDX Name | Maps To | Type |
-|--------------|---------|------|
-| `duration` | `_duration` | number |
-| `service` | `_service` | string |
-| `span_name` | `span_name` | string |
-| `level` | `severity_text` | string |
-| `body` | `_hdx_body` | string |
-| `host` | `_host` | string |
-| `hyperdx_event_type` | `type` | string |
-| Custom (e.g., `system.cpu.percent`) | `_number_attributes['system.cpu.percent']` | auto |
-| Custom (e.g., `health.status`) | `_string_attributes['health.status']` | auto |
+| Lucene field | Traces column | Logs column |
+|-------------|---------------|-------------|
+| `service` | `ServiceName` | `ServiceName` |
+| `span_name` | `SpanName` | — |
+| `level` | — | `SeverityText` |
+| `body` | `SpanName` | `Body` |
+| `duration` | `Duration` | — |
+| Custom attributes | `SpanAttributes['key']` | `LogAttributes['key']` |
 
-## Multi-Series Charts
+## Column Names (for `valueExpression` and `groupBy`)
 
-Multiple items in the `series` array create multi-series charts (e.g., two lines on one chart):
+Use actual ClickHouse column names in `valueExpression` and `groupBy`:
+
+| valueExpression | Source | Column Type |
+|----------------|--------|-------------|
+| `Duration` | traces | UInt64 (nanoseconds) |
+| `ServiceName` | traces/logs | LowCardinality(String) |
+| `SpanName` | traces | LowCardinality(String) |
+| `StatusCode` | traces | LowCardinality(String) |
+| `SeverityText` | logs | LowCardinality(String) |
+| `Body` | logs | String |
+| `SpanAttributes['key']` | traces | String (from Map) |
+| `LogAttributes['key']` | logs | String (from Map) |
+| `Value` | metrics | Float64 |
+
+## Multi-Select Tiles
+
+Multiple items in `select` create multi-series charts:
 
 ```json
-"series": [
-  {"type": "time", "table": "logs", "aggFn": "avg", "field": "system.load.1m", "where": "...", "groupBy": []},
-  {"type": "time", "table": "logs", "aggFn": "avg", "field": "system.load.5m", "where": "...", "groupBy": []},
-  {"type": "time", "table": "logs", "aggFn": "avg", "field": "system.load.15m", "where": "...", "groupBy": []}
+"select": [
+  {"aggFn": "quantile", "level": 0.5, "valueExpression": "Duration", "aggCondition": ""},
+  {"aggFn": "quantile", "level": 0.95, "valueExpression": "Duration", "aggCondition": ""},
+  {"aggFn": "quantile", "level": 0.99, "valueExpression": "Duration", "aggCondition": ""}
 ]
 ```
 
-> **Constraint:** All series within a single chart MUST share identical `type` and identical `groupBy` arrays. Mixed types or mismatched `groupBy` silently drops data.
+All select items share the same `where`, `groupBy`, and `displayType`.
+
+For per-item filtering, use `aggCondition`:
+```json
+"select": [
+  {"aggFn": "avg", "valueExpression": "Duration", "aggCondition": "ServiceName = 'payment'"},
+  {"aggFn": "avg", "valueExpression": "Duration", "aggCondition": "ServiceName = 'cart'"}
+]
+```
 
 ## Grid Layout Patterns
 
-Grid is 12 columns wide.
+Grid is **24 columns wide**.
 
-**4 KPIs across:** `w:3, h:2` at `x: 0, 3, 6, 9`
+**4 KPIs across:** `w:6, h:2` at `x: 0, 6, 12, 18`
 
-**Half-width charts:** `w:6, h:3` at `x: 0, 6`
+**Half-width charts:** `w:12, h:3` at `x: 0, 12`
 
-**Full-width chart:** `w:12, h:3`
+**Full-width chart:** `w:24, h:3`
 
 **Typical dashboard:**
 ```
-y:0  h:2  — KPI row (4x w:3)
-y:2  h:3  — Chart row (2x w:6)
-y:5  h:3  — Chart row (2x w:6)
-y:8  h:3  — Chart row (2x w:6)
+y:0  h:2  — KPI row (4x w:6)
+y:2  h:3  — Chart row (2x w:12)
+y:5  h:3  — Chart row (2x w:12)
+y:8  h:3  — Chart row (2x w:12)
 ```
