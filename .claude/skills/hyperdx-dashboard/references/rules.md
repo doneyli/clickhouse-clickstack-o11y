@@ -27,6 +27,38 @@
 | 21 | `sourceId` must be a **source ID** from `GET /sources` (NOT a kind string) | Kind strings like `"traces"` are rejected. Fetch IDs: `SRC = {s['kind']: s['id'] for s in requests.get('/sources').json()}` |
 | 22 | All series in a tile must have the **same `type`** | Zod validation error: "All series must have the same type" |
 | 23 | Max 5 series per tile | Array max length enforced by Zod |
+| 24 | **Histogram metrics: do NOT use `ServiceName` in `groupBy`** — use `Attributes['key']` instead (e.g., `Attributes['rpc.service']`, `Attributes['http.method']`). Gauge and sum metrics support `ServiceName` groupBy fine. *(Discovered — see below)* | HyperDX histogram query builder doesn't propagate `ServiceName` to inner subqueries → `Unknown expression identifier 'ServiceName'` |
+
+## Discovered Limitations (Not in Official API Docs)
+
+Rules in this section were learned empirically through testing — they are **not documented** in the ClickStack/HyperDX API or UI. The API accepts the payload without error, but the generated ClickHouse query fails at render time.
+
+When you discover a new limitation like this, add it here following this template:
+
+| Field | Value |
+|-------|-------|
+| **Rule #** | *(next number in the All Rules table above)* |
+| **Summary** | *(one-line description of the limitation)* |
+| **Symptom** | *(exact error message or observed behavior)* |
+| **Root cause** | *(why it happens — e.g., query builder internals, missing column propagation)* |
+| **Workaround** | *(how to avoid the issue)* |
+| **Affected scope** | *(which metric types, series types, or field combinations)* |
+| **Date discovered** | *(YYYY-MM-DD)* |
+
+---
+
+### Rule 24 — Histogram `groupBy` cannot use `ServiceName`
+
+| Field | Value |
+|-------|-------|
+| **Summary** | `groupBy: ["ServiceName"]` on histogram metrics fails at query time |
+| **Symptom** | `Unknown expression identifier 'ServiceName'` in HyperDX-generated ClickHouse SQL. The dashboard API accepts the payload (HTTP 200), but the tile shows "Error loading chart" in the UI. |
+| **Root cause** | HyperDX's histogram query builder wraps data in nested CTEs for delta/rate computation. The inner subquery selects `TimeUnix, MetricName, AggregationTemporality, ExplicitBounds, ResourceAttributes, Attributes, ...` but does NOT include `ServiceName`. The outer query references `[ServiceName] AS group`, which fails because the column is not in scope. |
+| **Workaround** | Use `Attributes['key']` for groupBy on histograms (e.g., `Attributes['rpc.service']`, `Attributes['http.method']`), since `Attributes` IS propagated through the inner query. Or remove `groupBy` entirely. |
+| **Affected scope** | Only `metricDataType: "histogram"`. Gauge and sum metrics propagate `ServiceName` correctly and are unaffected. |
+| **Date discovered** | 2026-02-19 |
+
+---
 
 ## Post-Generation Validation Checklist
 
@@ -49,6 +81,7 @@
 - [ ] **15. Metrics series have `metricName` and `metricDataType`** — present on every metrics source series, `metricDataType` is lowercase
 - [ ] **16. `whereLanguage: "lucene"` present** — on every series with a `where` clause
 - [ ] **17. `displayType` only on `time` series** — `"line"` or `"stacked_bar"`. Not on number/table/search/markdown.
+- [ ] **18. Histogram groupBy avoids `ServiceName`** — If `metricDataType: "histogram"`, `groupBy` must NOT contain `ServiceName`. Use `Attributes['key']` instead (e.g., `Attributes['rpc.service']`). Gauge/sum metrics are unaffected.
 
 ### Validation Output Format
 

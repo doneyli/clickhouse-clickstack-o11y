@@ -158,6 +158,9 @@ Static markdown text tile.
 | 19 | `Duration` is nanoseconds (UInt64) in `otel_traces` | HyperDX UI handles display formatting |
 | 20 | Quantile uses `aggFn: "quantile"` + `level: 0.95` | Not `p95` — old aggFn values don't exist |
 | 21 | All series in a tile must have the same `type` | Zod validation error |
+| 22 | **Histogram metrics: do NOT use `ServiceName` in `groupBy`** — use `Attributes['key']` instead (e.g., `Attributes['rpc.service']`) *(discovered, not in API docs)* | HyperDX histogram query builder doesn't propagate `ServiceName` to inner subqueries |
+
+Rules marked *(discovered, not in API docs)* were learned empirically — the API accepts the payload but the tile fails at render time. See `references/rules.md` > "Discovered Limitations" for full details, root cause analysis, and the template for documenting future findings.
 
 ## Lucene Where Syntax
 

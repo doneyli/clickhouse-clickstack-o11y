@@ -236,6 +236,8 @@ No `sourceId`, no `field`, no `where`.
 | `"summary"` | `otel_metrics_summary` |
 | `"exponential histogram"` | `otel_metrics_exponential_histogram` |
 
+**Histogram `groupBy` limitation (discovered, not in API docs):** HyperDX's histogram query builder does NOT propagate `ServiceName` into its inner subqueries. Using `groupBy: ["ServiceName"]` on histogram metrics causes `Unknown expression identifier 'ServiceName'` at render time (the API accepts the payload fine). Instead, use `Attributes['key']` for groupBy on histograms (e.g., `Attributes['rpc.service']`, `Attributes['http.method']`), since `Attributes` IS included in the inner query. Alternatively, remove `groupBy` entirely. Gauge and sum metrics work fine with `ServiceName` in `groupBy`. See `references/rules.md` Rule 24 for full details.
+
 ## numberFormat Object
 
 Recommended for `type: "number"` KPI tiles. Optional on other series types.
