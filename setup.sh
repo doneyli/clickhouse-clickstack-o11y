@@ -3,7 +3,7 @@
 # One-command setup for ClickStack Sample Data Demo
 # =============================================================================
 #
-# Downloads the ClickStack e-commerce sample data and loads it into HyperDX.
+# Downloads the ClickStack e-commerce sample data and loads it into ClickStack.
 # This script is idempotent -- safe to run multiple times.
 #
 # Usage:
@@ -24,7 +24,7 @@ echo ""
 # Step 1: .env file
 # ---------------------------------------------------------------------------
 
-echo "[1/6] Checking .env file..."
+echo "[1/7] Checking .env file..."
 if [ ! -f .env ]; then
     cp .env.example .env
     echo "  Created .env from .env.example"
@@ -36,7 +36,7 @@ fi
 # Step 2: Python virtual environment
 # ---------------------------------------------------------------------------
 
-echo "[2/6] Setting up Python virtual environment..."
+echo "[2/7] Setting up Python virtual environment..."
 if [ ! -d .venv ]; then
     python3 -m venv .venv
     echo "  Created .venv"
@@ -48,24 +48,36 @@ pip install -q -r requirements.txt
 echo "  Dependencies installed"
 
 # ---------------------------------------------------------------------------
-# Step 3: Docker Compose
+# Step 3: Download NGINX access log
 # ---------------------------------------------------------------------------
 
-echo "[3/6] Starting HyperDX via Docker Compose..."
+echo "[3/7] Downloading NGINX access log..."
+if [ ! -f access.log ]; then
+    curl -O https://datasets-documentation.s3.eu-west-3.amazonaws.com/clickstack-integrations/access.log
+    echo "  Downloaded access.log"
+else
+    echo "  access.log already exists, skipping download"
+fi
+
+# ---------------------------------------------------------------------------
+# Step 4: Docker Compose
+# ---------------------------------------------------------------------------
+
+echo "[4/7] Starting ClickStack via Docker Compose..."
 docker compose up -d
 echo "  Container started"
 
 # ---------------------------------------------------------------------------
-# Step 4: Wait for services
+# Step 5: Wait for services
 # ---------------------------------------------------------------------------
 
-echo "[4/6] Waiting for HyperDX UI (port 8080) and ClickHouse (port 8123)..."
+echo "[5/7] Waiting for ClickStack UI (port 8080) and ClickHouse (port 8123)..."
 MAX_WAIT=120
 WAITED=0
 while ! curl -sf http://localhost:8080 > /dev/null 2>&1; do
     if [ $WAITED -ge $MAX_WAIT ]; then
-        echo "  ERROR: HyperDX UI did not become available within ${MAX_WAIT}s"
-        echo "  Check logs: docker logs hyperdx-local"
+        echo "  ERROR: ClickStack UI did not become available within ${MAX_WAIT}s"
+        echo "  Check logs: docker logs clickstack-local"
         exit 1
     fi
     sleep 2
@@ -74,7 +86,7 @@ while ! curl -sf http://localhost:8080 > /dev/null 2>&1; do
         echo "  Still waiting... (${WAITED}s)"
     fi
 done
-echo "  HyperDX UI is up (took ${WAITED}s)"
+echo "  ClickStack UI is up (took ${WAITED}s)"
 
 WAITED=0
 while ! curl -sf http://localhost:8123/ping > /dev/null 2>&1; do
@@ -88,104 +100,37 @@ done
 echo "  ClickHouse is up"
 
 # ---------------------------------------------------------------------------
-# Step 5: Bootstrap MongoDB (team, user, API key, traces source)
+# Step 6: Create v2 API user for dashboard management
 # ---------------------------------------------------------------------------
 
-echo "[5/6] Bootstrapping HyperDX team, user, and source..."
-sleep 3
+echo "[6/7] Setting up v2 API access key..."
+V2_ACCESS_KEY="clickstack-local-v2-api-key"
+TEAM_OID="5f6c6f63616c5f7465616d5f"
 
-API_KEY=$(docker exec hyperdx-local mongo --quiet --eval '
-db = db.getSiblingDB("hyperdx");
-
-// Use the hardcoded local team ID that HyperDX Local expects.
-// The public API resolves the team from the user record — if the user
-// points to a different team the dashboard will be invisible in the UI.
-var LOCAL_TEAM_ID = ObjectId("5f6c6f63616c5f7465616d5f");
-
-// Ensure team exists with the known local ID
-var team = db.teams.findOne({ _id: LOCAL_TEAM_ID });
-if (!team) {
-    // Remove any auto-generated team first
-    db.teams.deleteMany({});
-    db.teams.insertOne({ _id: LOCAL_TEAM_ID, name: "Local Team", createdAt: new Date(), updatedAt: new Date() });
-    team = db.teams.findOne({ _id: LOCAL_TEAM_ID });
+docker exec clickstack-local mongo --quiet hyperdx --eval "
+// Create team record if not exists (local mode fakes it in middleware but v2 needs DB record)
+if (db.teams.count({_id: ObjectId('${TEAM_OID}')}) === 0) {
+  db.teams.insert({_id: ObjectId('${TEAM_OID}'), name: 'Local App Team'});
 }
-
-// Ensure user exists with API key, pointing to the correct team
-var user = db.users.findOne({});
-if (!user) {
-    var key = LOCAL_TEAM_ID.str + "0000000000000000";
-    db.users.insertOne({
-        email: "local@hyperdx.io",
-        name: "Local User",
-        team: LOCAL_TEAM_ID,
-        accessKey: key,
-        createdAt: new Date(),
-        updatedAt: new Date()
-    });
-    user = db.users.findOne({});
-} else if (user.team.str !== LOCAL_TEAM_ID.str) {
-    // Fix team alignment if user already exists but points to wrong team
-    db.users.updateOne({ _id: user._id }, { $set: { team: LOCAL_TEAM_ID } });
+// Create user with known access key for v2 API auth
+if (db.users.count({email: 'local-user@hyperdx.io'}) === 0) {
+  db.users.insert({
+    email: 'local-user@hyperdx.io',
+    name: 'Local User',
+    team: ObjectId('${TEAM_OID}'),
+    accessKey: '${V2_ACCESS_KEY}',
+    createdAt: new Date(),
+    updatedAt: new Date()
+  });
 }
-
-// Ensure traces source exists
-var src = db.sources.findOne({kind: "trace"});
-if (!src) {
-    db.sources.insertOne({
-        name: "Backend Traces",
-        kind: "trace",
-        team: LOCAL_TEAM_ID,
-        from: { format: "internal", databaseName: "default", tableName: "log_stream" },
-        createdAt: new Date(),
-        updatedAt: new Date()
-    });
-}
-
-// Ensure logs source exists
-if (!db.sources.findOne({kind: "log"})) {
-    db.sources.insertOne({
-        name: "Backend Logs",
-        kind: "log",
-        team: LOCAL_TEAM_ID,
-        from: { format: "internal", databaseName: "default", tableName: "log_stream" },
-        createdAt: new Date(),
-        updatedAt: new Date()
-    });
-}
-
-// Ensure metrics source exists
-if (!db.sources.findOne({kind: "metric"})) {
-    db.sources.insertOne({
-        name: "Backend Metrics",
-        kind: "metric",
-        team: LOCAL_TEAM_ID,
-        from: { format: "internal", databaseName: "default", tableName: "metric_stream" },
-        createdAt: new Date(),
-        updatedAt: new Date()
-    });
-}
-
-print(user.accessKey);
-' 2>/dev/null || echo "")
-
-if [ -n "$API_KEY" ] && [ "$API_KEY" != "undefined" ] && [ "$API_KEY" != "null" ]; then
-    if grep -q "^HYPERDX_API_KEY=$" .env; then
-        sed -i.bak "s/^HYPERDX_API_KEY=$/HYPERDX_API_KEY=$API_KEY/" .env && rm -f .env.bak
-        echo "  API key saved to .env: $API_KEY"
-    else
-        echo "  API key already set in .env"
-    fi
-    echo "  Team, user, and traces source ready"
-else
-    echo "  WARNING: Could not bootstrap MongoDB (may need manual setup)"
-fi
+" > /dev/null 2>&1
+echo "  v2 API access key: ${V2_ACCESS_KEY}"
 
 # ---------------------------------------------------------------------------
-# Step 6: Download and load sample data
+# Step 7: Download and load sample data
 # ---------------------------------------------------------------------------
 
-echo "[6/6] Loading ClickStack e-commerce sample data..."
+echo "[7/7] Loading ClickStack e-commerce sample data..."
 
 # Download if not already present
 if [ ! -f sample.tar.gz ]; then
@@ -196,13 +141,6 @@ else
     echo "  sample.tar.gz already exists, skipping download"
 fi
 
-# Use the API key for ingestion auth
-INGEST_KEY="${API_KEY:-}"
-if [ -z "$INGEST_KEY" ]; then
-    # Try to read from .env
-    INGEST_KEY=$(grep '^HYPERDX_API_KEY=' .env | cut -d= -f2)
-fi
-
 echo "  Sending data to OTLP endpoint (this may take a few minutes)..."
 for filename in $(tar -tf sample.tar.gz); do
     endpoint="http://localhost:4318/v1/${filename%.json}"
@@ -210,7 +148,6 @@ for filename in $(tar -tf sample.tar.gz); do
     tar -xOf sample.tar.gz "$filename" | while read -r line; do
         printf '%s\n' "$line" | curl -s -o /dev/null -X POST "$endpoint" \
             -H "Content-Type: application/json" \
-            -H "authorization: ${INGEST_KEY}" \
             --data-binary @-
     done
 done
@@ -225,14 +162,15 @@ echo "============================================================"
 echo "  SETUP COMPLETE!"
 echo "============================================================"
 echo ""
-echo "  HyperDX UI:        http://localhost:8080"
-echo "  HyperDX API:       http://localhost:8000"
+echo "  ClickStack UI:     http://localhost:8080"
+echo "  ClickStack API:    http://localhost:8000"
+echo "  ClickStack v2 API: http://localhost:8000/api/v2/"
+echo "  v2 API Key:        clickstack-local-v2-api-key"
 echo "  ClickHouse HTTP:   http://localhost:8123"
 echo "  OTLP HTTP:         http://localhost:4318"
 echo ""
 echo "  Next steps:"
 echo "    1. Open http://localhost:8080 in your browser"
 echo "    2. Go to Search to explore the e-commerce sample data"
-echo "    3. Query ClickHouse:  python query_clickhouse.py --summary"
-echo "    4. Use /hyperdx-dashboard skill to create dashboards"
+echo "    3. Use /hyperdx-dashboard skill to create dashboards"
 echo ""

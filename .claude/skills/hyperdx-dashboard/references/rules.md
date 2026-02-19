@@ -1,94 +1,99 @@
-# Rules & Validation Checklist
+# Rules & Validation Checklist (v2 API)
 
 ## All Rules
 
 | # | Rule | What Breaks If Violated |
 |---|------|------------------------|
-| 1 | `where` uses **Lucene syntax**, NOT SQL | SQL syntax like `type = 'span' AND _service = '...'` silently fails. Use Lucene: `span_name:cpu-load-sample service:my-service` |
-| 2 | `field` uses **HyperDX field names**, NOT ClickHouse columns | `_number_attributes['system.cpu.percent']` won't work. Use `system.cpu.percent`. `_duration` won't work — use `duration`. |
-| 3 | Top-level array is `charts`, NOT `tiles` | Dashboard shows empty. The API expects `charts`. |
-| 4 | Series `type` must be: `time`, `number`, `table`, `histogram`, `search`, `markdown` | Invalid types render blank. No `line`, `stacked_bar`, `bar`, `area` — those don't exist in this format. |
-| 5 | `aggFn` must be valid | **Valid values:** `count`, `count_rate`, `sum`, `avg`, `min`, `max`, `p50`, `p90`, `p95`, `p99`, `count_distinct`, `avg_rate`, `sum_rate`, `min_rate`, `max_rate`, `p50_rate`, `p90_rate`, `p95_rate`, `p99_rate`. Invalid values fail silently. |
-| 6 | `field` must be **omitted** for `count` aggFn | Including a field with `count` may cause errors. |
-| 7 | `duration` is already in milliseconds | The HyperDX field name `duration` maps to `_duration` (Float64 ms). Don't divide by 1000. |
-| 8 | `numberFormat` required for `type: "number"` series | KPI tiles without it show raw unformatted numbers. |
-| 9 | Grid is 12 columns wide; `x + w <= 12` | Charts with `x + w > 12` overflow, overlap, or disappear. |
-| 10 | `groupBy` is an array of field names | Works for `time` charts to split by a field. E.g., `["span_name"]`. |
-| 11 | **Deploy via API only**, never MongoDB direct insert | Direct MongoDB inserts use the wrong team ID and dashboards won't appear in the UI. Always use `POST http://localhost:8000/api/v1/dashboards` with Bearer token auth. |
-| 12 | No `source`, `displayType`, `whereLanguage`, `granularity`, `config`, `select` fields | These belong to the old MongoDB format and are silently ignored or cause errors. |
-| 13 | All series in a chart must share identical `type` and identical `groupBy` | Mixed types or mismatched `groupBy` silently drops data. |
-| 14 | Always emit: `asRatio: false` on every chart, `table: "logs"` (or `"metrics"` for metric data) on every series, `groupBy: []` on every `time` series, `query: ""` at dashboard level | Omitting these creates non-deterministic API behavior. |
-| 15 | `h: 2` for `type: "number"` (KPI), `h: 3` for all other chart types | Inconsistent heights break row alignment. |
-| 16 | Chart `id` must be descriptive kebab-case, max 36 chars (e.g., `avg-latency-ms`, `requests-over-time`). Always provide `id` explicitly. | Omitting generates UUIDs — unreadable in debugging. |
-| 17 | Metrics series require `metricDataType` field (`"Gauge"`, `"Sum"`, `"Histogram"`, `"Summary"`) and `field` in `"name - DataType"` format (e.g., `"system.cpu.utilization - Gauge"`) | Missing `metricDataType` → API error "Metric data type is required". Wrong field format → silently returns no data. |
-| 18 | **NEVER use `type:span` or `type:log` in `where`** | The `type` column is internal to HyperDX and NOT searchable via Lucene. Using it silently returns 0 rows. Filter by `service:X` instead, or omit the type filter. |
+| 1 | `where` uses **Lucene syntax** with `whereLanguage: "lucene"` on each series | SQL syntax like `ServiceName = 'checkout'` in where fails. Use Lucene: `ServiceName:checkout SpanName:my-span`. Lucene uses **ClickHouse column names directly** — NOT HyperDX-mapped names like `service`, `level`, `span_name`. |
+| 2 | `field` uses **ClickHouse column names** (e.g., `Duration`, `ServiceName`) | HyperDX abstracted names like `duration`, `service` don't work in field |
+| 3 | Top-level is `tiles` with `series` array. NOT `charts`, NOT `config.select[]` | API validation error — v2 uses `tiles[].series[]` |
+| 4 | Series `type` must be valid: `time`, `number`, `table`, `search`, `markdown` | Zod discriminated union validation error |
+| 5 | `displayType` only on `type: "time"` series: `line` or `stacked_bar` | Other series types have no displayType field |
+| 6 | `aggFn` must be valid: `avg`, `count`, `count_distinct`, `last_value`, `max`, `min`, `quantile`, `sum`, `any`, `none` | Zod enum validation error. No `p50`/`p90`/`p95`/`p99` — use `quantile` + `level`. |
+| 7 | `field: ""` (or omit) for `count` aggFn | Including a column with `count` may cause errors |
+| 8 | `Duration` in `otel_traces` is **nanoseconds** (UInt64) | Not milliseconds. HyperDX UI handles display formatting. |
+| 9 | `numberFormat` recommended for `type: "number"` series | KPI tiles without it show raw unformatted numbers |
+| 10 | Grid is **24 columns wide**; `x + w <= 24` | Tiles with `x + w > 24` overflow, overlap, or disappear |
+| 11 | `groupBy` is array of **strings** `["Col"]` or `[]`. Max 10. Only on `time`/`table`. | Objects like `{"valueExpression": "Col"}` fail v2 validation |
+| 12 | **Deploy via v2 API** — `POST /api/v2/dashboards` with Bearer auth | Unauthenticated requests get 401. Use `clickstack-local-v2-api-key`. |
+| 13 | `tags` at dashboard level (array of strings, can be empty) | Max 50 tags, max 32 chars each |
+| 14 | Each series has its own `where` filter — no shared filter | Unlike internal API, v2 has per-series where |
+| 15 | `whereLanguage: "lucene"` on every series that has a `where` | Omitting may default to wrong parser |
+| 16 | `h: 3` for `type: "number"` (KPI), `h: 6` for `type: "time"`, `h: 5` for `type: "table"` | Inconsistent heights break row alignment |
+| 17 | Tile `name` is **required**, top-level on tile (NOT nested in config) | API validation error |
+| 18 | Metrics series need `metricName` and `metricDataType` (lowercase) | Missing → no data or API error. Values: `gauge`, `sum`, `histogram`, `summary`, `exponential histogram`. |
+| 19 | **NEVER use `type:span` or `type:log`** in `where` | Internal field — not searchable via Lucene. Silently returns 0 rows. |
+| 20 | Quantile uses `aggFn: "quantile"` + `level: 0.95` | Not `p95`. Old `p50`/`p90`/`p95`/`p99` aggFn values don't exist. |
+| 21 | `sourceId` must be a **source ID** from `GET /sources` (NOT a kind string) | Kind strings like `"traces"` are rejected. Fetch IDs: `SRC = {s['kind']: s['id'] for s in requests.get('/sources').json()}` |
+| 22 | All series in a tile must have the **same `type`** | Zod validation error: "All series must have the same type" |
+| 23 | Max 5 series per tile | Array max length enforced by Zod |
 
 ## Post-Generation Validation Checklist
 
-**For every chart**, print the checklist below with `[ok]` or `[FAIL]` for each item. Fix all `[FAIL]` items before deploying. Do NOT skip this step.
+**For every tile**, print the checklist below with `[ok]` or `[FAIL]` for each item. Fix all `[FAIL]` items before deploying. Do NOT skip this step.
 
-- [ ] **1. `where` uses Lucene syntax** — `span_name:value service:name` NOT SQL `type = 'span' AND ...`. **NEVER use `type:span` or `type:log`** — these silently return 0 rows.
-- [ ] **2. `field` uses HyperDX names** — `system.cpu.percent` NOT `_number_attributes['...']`; `duration` NOT `_duration`; `service` NOT `_service`
-- [ ] **3. Top-level key is `charts`** — NOT `tiles`
-- [ ] **4. Series `type` is valid** — `time`, `number`, `table`, `histogram`, `search`, or `markdown`
-- [ ] **5. `aggFn` is valid** — see rule #5 above
-- [ ] **6. `count` has no `field`** — field omitted or absent for count aggregation
-- [ ] **7. `numberFormat` on all KPI charts** — present on every `type: "number"` series
-- [ ] **8. No grid overflow** — `x + w <= 12` for every chart
-- [ ] **9. No old-format fields** — no `source`, `displayType`, `whereLanguage`, `granularity`, `config`, `select`, `aggCondition`, `valueExpression`
-- [ ] **10. `asRatio: false` present** — on every chart object
-- [ ] **11. `table: "logs"` or `"metrics"` on all series** — `"logs"` for traces/spans/logs, `"metrics"` for metric data; except `markdown` type
-- [ ] **12. `groupBy` on time series** — `groupBy: []` present on every `time` series (even when not grouping)
-- [ ] **13. Multi-series consistency** — all series in a chart share identical `type` and identical `groupBy`
-- [ ] **14. Height convention** — `h: 2` for `type: "number"` (KPI), `h: 3` for all others
-- [ ] **15. Chart ID is kebab-case** — descriptive, max 36 chars, explicitly provided (no UUIDs)
-- [ ] **16. Metrics series have `metricDataType`** — present on every series with `table: "metrics"` (`"Gauge"`, `"Sum"`, `"Histogram"`, or `"Summary"`)
-- [ ] **17. Metrics `field` uses `"name - DataType"` format** — e.g., `"system.cpu.utilization - Gauge"`, not just `"system.cpu.utilization"`
+- [ ] **1. `where` uses Lucene syntax with ClickHouse column names** — `ServiceName:value SpanName:value` NOT SQL, NOT HyperDX names (`service`, `level`, `span_name`). `whereLanguage: "lucene"` present on each series. **NEVER `type:span` or `type:log`**.
+- [ ] **2. `field` uses ClickHouse column names** — `Duration` NOT `duration`; `ServiceName` NOT `service`; `SpanAttributes['key']` NOT just `key`
+- [ ] **3. Top-level key is `tiles` with `series`** — NOT `charts`, NOT `config.select[]`
+- [ ] **4. Series `type` is valid** — `time`, `number`, `table`, `search`, or `markdown`
+- [ ] **5. `aggFn` is valid** — `avg`, `count`, `count_distinct`, `last_value`, `max`, `min`, `quantile`, `sum`, `any`, or `none` (with `level` for quantile)
+- [ ] **6. `count` has empty `field`** — `field: ""` or field omitted for count aggregation
+- [ ] **7. `numberFormat` on KPI tiles** — present on `type: "number"` series for readable display
+- [ ] **8. No grid overflow** — `x + w <= 24` for every tile
+- [ ] **9. `groupBy` is string array** — `["ServiceName"]` or `[]`, NOT objects. Only on `time`/`table`.
+- [ ] **10. `tags` at dashboard level** — present (even if empty `[]`)
+- [ ] **11. `sourceId` is a source ID** — from `GET /sources`, NOT a kind string like `"traces"`
+- [ ] **12. All series have same `type`** — within each tile, every series must share the same type
+- [ ] **13. Height convention** — `h: 3` for number (KPI), `h: 6` for time, `h: 5` for table
+- [ ] **14. Tile `name` is present** — required, top-level on tile
+- [ ] **15. Metrics series have `metricName` and `metricDataType`** — present on every metrics source series, `metricDataType` is lowercase
+- [ ] **16. `whereLanguage: "lucene"` present** — on every series with a `where` clause
+- [ ] **17. `displayType` only on `time` series** — `"line"` or `"stacked_bar"`. Not on number/table/search/markdown.
 
 ### Validation Output Format
 
-Print validation results per chart before deploying. Example:
+Print validation results per tile before deploying. Example:
 
 ```
-Chart "total-llm-requests":
-  [ok]  1. Lucene syntax
-  [ok]  2. HyperDX field names
-  [ok]  3. charts array
+Tile "Total Requests":
+  [ok]  1. Lucene syntax, whereLanguage present
+  [ok]  2. field uses column names
+  [ok]  3. tiles with series array
   [ok]  4. Valid series type (number)
   [ok]  5. Valid aggFn (count)
-  [ok]  6. No field with count
+  [ok]  6. Empty field for count
   [ok]  7. numberFormat present
-  [ok]  8. Grid: x=0 w=3 → 3 <= 12
-  [ok]  9. No old-format fields
-  [ok] 10. asRatio: false
-  [ok] 11. table: "logs"
-  [ok] 12. N/A (not time series)
-  [ok] 13. Single series — consistent
-  [ok] 14. h=2 (KPI)
-  [ok] 15. id="total-llm-requests" (kebab-case)
-  [ok] 16. N/A (not metrics)
-  [ok] 17. N/A (not metrics)
-  Result: ALL PASS ✓
+  [ok]  8. Grid: x=0 w=6 → 6 <= 24
+  [ok]  9. groupBy: N/A (number type)
+  [ok] 10. tags present
+  [ok] 11. sourceId: <trace-source-id> (from GET /sources)
+  [ok] 12. All series type: number
+  [ok] 13. h=3 (KPI)
+  [ok] 14. name="Total Requests" present
+  [ok] 15. N/A (not metrics)
+  [ok] 16. whereLanguage: "lucene" present
+  [ok] 17. N/A (number type, no displayType)
+  Result: ALL PASS
 
-Chart "requests-over-time":
-  [ok]  1. Lucene syntax
-  [ok]  2. HyperDX field names
-  [ok]  3. charts array
+Tile "Latency Over Time":
+  [ok]  1. Lucene syntax, whereLanguage present
+  [ok]  2. field: "Duration" (column name)
+  [ok]  3. tiles with series array
   [ok]  4. Valid series type (time)
-  [ok]  5. Valid aggFn (count)
-  [ok]  6. No field with count
+  [ok]  5. Valid aggFn (avg)
+  [ok]  6. N/A (not count)
   [ok]  7. N/A (not KPI)
-  [ok]  8. Grid: x=0 w=6 → 6 <= 12
-  [ok]  9. No old-format fields
-  [ok] 10. asRatio: false
-  [ok] 11. table: "logs"
-  [ok] 12. groupBy: [] present
-  [ok] 13. Single series — consistent
-  [ok] 14. h=3 (chart)
-  [ok] 15. id="requests-over-time" (kebab-case)
-  [ok] 16. N/A (not metrics)
-  [ok] 17. N/A (not metrics)
-  Result: ALL PASS ✓
+  [ok]  8. Grid: x=0 w=12 → 12 <= 24
+  [ok]  9. groupBy: ["SpanName"] (string array)
+  [ok] 10. tags present
+  [ok] 11. sourceId: <trace-source-id> (from GET /sources)
+  [ok] 12. All series type: time
+  [ok] 13. h=6 (time chart)
+  [ok] 14. name="Latency Over Time" present
+  [ok] 15. N/A (not metrics)
+  [ok] 16. whereLanguage: "lucene" present
+  [ok] 17. displayType: "line" (time series only)
+  Result: ALL PASS
 ```
 
-If any item shows `[FAIL]`, fix the chart JSON and re-validate before proceeding to deploy.
+If any item shows `[FAIL]`, fix the tile JSON and re-validate before proceeding to deploy.
