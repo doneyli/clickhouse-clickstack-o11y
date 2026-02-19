@@ -2,8 +2,8 @@
 """
 Continuously stream sample data into HyperDX with current timestamps.
 
-Replays sample.tar.gz in a loop, rewriting timestamps to "now" so that
-HyperDX Live Tail shows a continuous flow of data.
+Replays sample.tar.gz and access.log in a loop, rewriting timestamps to "now"
+so that HyperDX Live Tail shows a continuous flow of data.
 
 Usage:
     python stream_data.py                  # Default: 10-min cycles, all signals
@@ -11,6 +11,7 @@ Usage:
     python stream_data.py --rate 2.0       # 2x speed multiplier
     python stream_data.py --traces         # Only stream traces
     python stream_data.py --logs --metrics # Logs + metrics only
+    python stream_data.py --nginx          # Only stream NGINX access logs
     python stream_data.py -v               # Verbose (every batch)
     python stream_data.py -q               # Quiet (summary every 30s)
 """
@@ -19,12 +20,14 @@ from __future__ import annotations
 
 import argparse
 import io
+import json
 import os
 import re
 import signal
 import sys
 import tarfile
 import time
+from datetime import datetime
 
 import requests
 from dotenv import load_dotenv
@@ -36,15 +39,23 @@ TIMESTAMP_RE = re.compile(
     r'"(startTimeUnixNano|endTimeUnixNano|timeUnixNano|observedTimeUnixNano)"\s*:\s*"(\d+)"'
 )
 
-SIGNAL_TYPES = ("traces", "logs", "metrics")
+SIGNAL_TYPES = ("traces", "logs", "metrics", "nginx")
+
+# Map signal types to OTLP endpoint paths
+SIGNAL_ENDPOINT = {
+    "traces": "traces",
+    "logs": "logs",
+    "metrics": "metrics",
+    "nginx": "logs",
+}
+
+NGINX_BATCH_SIZE = 50
 
 
-def load_batches(tar_path: str, signals: set[str]) -> list[tuple[str, int, int, str]]:
+def load_batches(tar_path: str, signals: set[str]) -> list[tuple[str, int, str]]:
     """Load batches from sample.tar.gz.
 
-    Returns (signal_type, sort_ts_ns, original_ts_ns, payload).
-    sort_ts_ns is clamped to p5–p95 for pacing; original_ts_ns is the real
-    min timestamp for correct payload offset computation.
+    Returns raw (signal_type, ts_ns, payload) tuples without clamping.
     """
     raw = []
     with tarfile.open(tar_path, "r:gz") as tf:
@@ -64,11 +75,21 @@ def load_batches(tar_path: str, signals: set[str]) -> list[tuple[str, int, int, 
                 ts = extract_min_timestamp(line)
                 if ts is not None:
                     raw.append((signal_type, ts, line))
+    return raw
 
+
+def clamp_and_sort_batches(
+    raw: list[tuple[str, int, str]],
+) -> list[tuple[str, int, int, str]]:
+    """Clamp timestamps to p5-p95 range and sort.
+
+    Takes raw (signal_type, ts_ns, payload) tuples.
+    Returns (signal_type, sort_ts_ns, orig_ts_ns, payload) where sort_ts_ns
+    is clamped for pacing and orig_ts_ns is the real timestamp.
+    """
     if not raw:
         return []
 
-    # Compute p5/p95 bounds and clamp outliers for pacing
     timestamps = sorted(t[1] for t in raw)
     lo = timestamps[len(timestamps) // 20]
     hi = timestamps[19 * len(timestamps) // 20]
@@ -100,12 +121,101 @@ def rewrite_timestamps(payload: str, offset_ns: int) -> str:
     return TIMESTAMP_RE.sub(replace_ts, payload)
 
 
-def preflight(tar_path: str, otlp_endpoint: str, api_key: str):
+# ── NGINX helpers ──────────────────────────────────────────────────────────
+
+
+def parse_nginx_timestamp(time_local: str) -> int:
+    """Parse NGINX time_local (e.g. '20/Oct/2025:17:02:32 +0000') to nanosecond epoch."""
+    dt = datetime.strptime(time_local, "%d/%b/%Y:%H:%M:%S %z")
+    return int(dt.timestamp() * 1e9)
+
+
+def nginx_line_to_log_record(data: dict, ts_ns: int) -> dict:
+    """Convert one parsed NGINX JSON line to an OTLP logRecord dict."""
+    attributes = []
+    for key, value in data.items():
+        if key == "time_local":
+            continue
+        attributes.append({"key": key, "value": {"stringValue": str(value)}})
+    attributes.append({"key": "source", "value": {"stringValue": "nginx-demo"}})
+
+    request = data.get("request", "-")
+    status = data.get("status", "-")
+    body_bytes = data.get("body_bytes_sent", "-")
+
+    return {
+        "timeUnixNano": str(ts_ns),
+        "observedTimeUnixNano": str(ts_ns),
+        "severityNumber": 9,
+        "severityText": "INFO",
+        "body": {"stringValue": f"{request} {status} {body_bytes}"},
+        "attributes": attributes,
+    }
+
+
+def build_nginx_otlp_payload(log_records: list[dict]) -> str:
+    """Wrap OTLP logRecords in a resourceLogs envelope for nginx-demo."""
+    payload = {
+        "resourceLogs": [
+            {
+                "resource": {
+                    "attributes": [
+                        {
+                            "key": "service.name",
+                            "value": {"stringValue": "nginx-demo"},
+                        }
+                    ]
+                },
+                "scopeLogs": [{"logRecords": log_records}],
+            }
+        ]
+    }
+    return json.dumps(payload)
+
+
+def load_nginx_batches(log_path: str) -> list[tuple[str, int, str]]:
+    """Load NGINX access.log and return raw (signal_type, ts_ns, payload) tuples."""
+    records_with_ts: list[tuple[int, dict]] = []
+    with open(log_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            data = json.loads(line)
+            ts_ns = parse_nginx_timestamp(data["time_local"])
+            records_with_ts.append((ts_ns, data))
+
+    # Sort by timestamp before batching
+    records_with_ts.sort(key=lambda x: x[0])
+
+    raw: list[tuple[str, int, str]] = []
+    for i in range(0, len(records_with_ts), NGINX_BATCH_SIZE):
+        chunk = records_with_ts[i : i + NGINX_BATCH_SIZE]
+        log_records = [nginx_line_to_log_record(data, ts) for ts, data in chunk]
+        payload = build_nginx_otlp_payload(log_records)
+        batch_ts = chunk[0][0]  # timestamp of first record in batch
+        raw.append(("nginx", batch_ts, payload))
+
+    return raw
+
+
+# ── Preflight & main ──────────────────────────────────────────────────────
+
+
+def preflight(
+    otlp_endpoint: str,
+    api_key: str,
+    tar_path: str | None = None,
+    nginx_path: str | None = None,
+):
     """Verify prerequisites before streaming."""
     errors = []
 
-    if not os.path.exists(tar_path):
+    if tar_path and not os.path.exists(tar_path):
         errors.append(f"{tar_path} not found. Run ./setup.sh first.")
+
+    if nginx_path and not os.path.exists(nginx_path):
+        errors.append(f"{nginx_path} not found. Run ./setup.sh first.")
 
     if not api_key:
         errors.append(
@@ -142,6 +252,7 @@ def main():
     parser.add_argument("--traces", action="store_true", help="Stream traces only")
     parser.add_argument("--logs", action="store_true", help="Stream logs only")
     parser.add_argument("--metrics", action="store_true", help="Stream metrics only")
+    parser.add_argument("--nginx", action="store_true", help="Stream NGINX access logs")
     parser.add_argument("-v", "--verbose", action="store_true", help="Print every batch")
     parser.add_argument("-q", "--quiet", action="store_true", help="Summary every 30s only")
     args = parser.parse_args()
@@ -154,21 +265,47 @@ def main():
         selected.add("logs")
     if args.metrics:
         selected.add("metrics")
+    if args.nginx:
+        selected.add("nginx")
     if not selected:
         selected = set(SIGNAL_TYPES)
 
     tar_path = "sample.tar.gz"
+    nginx_path = "access.log"
     otlp_endpoint = os.getenv("OTLP_ENDPOINT", "http://localhost:4318")
     api_key = os.getenv("HYPERDX_API_KEY", "")
 
-    # Preflight checks
-    preflight(tar_path, otlp_endpoint, api_key)
+    tar_signals = selected & {"traces", "logs", "metrics"}
+    need_tar = bool(tar_signals)
+    need_nginx = "nginx" in selected
 
-    # Load and sort batches
-    print(f"Loading batches from {tar_path}...")
-    batches = load_batches(tar_path, selected)
+    # Preflight checks
+    preflight(
+        otlp_endpoint,
+        api_key,
+        tar_path=tar_path if need_tar else None,
+        nginx_path=nginx_path if need_nginx else None,
+    )
+
+    # Load batches from both sources
+    raw: list[tuple[str, int, str]] = []
+
+    if need_tar:
+        print(f"Loading batches from {tar_path}...")
+        raw.extend(load_batches(tar_path, tar_signals))
+
+    if need_nginx:
+        print(f"Loading NGINX batches from {nginx_path}...")
+        raw.extend(load_nginx_batches(nginx_path))
+
+    if not raw:
+        print("No batches found. Check sample.tar.gz / access.log.", file=sys.stderr)
+        sys.exit(1)
+
+    # Clamp and sort combined batches
+    batches = clamp_and_sort_batches(raw)
     if not batches:
-        print("No batches found. Check sample.tar.gz contents.", file=sys.stderr)
+        print("No valid batches after processing.", file=sys.stderr)
         sys.exit(1)
 
     # Compute original timeline
@@ -258,7 +395,7 @@ def main():
 
                 # Rewrite timestamps and send
                 rewritten = rewrite_timestamps(payload, ts_offset_ns)
-                endpoint = f"{otlp_endpoint}/v1/{signal_type}"
+                endpoint = f"{otlp_endpoint}/v1/{SIGNAL_ENDPOINT[signal_type]}"
 
                 try:
                     r = session.post(endpoint, data=rewritten, timeout=5)
