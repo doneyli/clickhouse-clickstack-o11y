@@ -4,7 +4,7 @@ description: Generates, validates, and deploys ClickStack dashboard definitions 
 license: Apache-2.0
 compatibility: Requires a running ClickStack instance (Docker) with API access on port 8000 and ClickHouse on port 8123.
 metadata:
-  author: ClickHouse
+  author: doneyli
   version: "1.0.0"
 ---
 
