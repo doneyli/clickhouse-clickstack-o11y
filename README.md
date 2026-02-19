@@ -199,6 +199,13 @@ Recreate this dashboard using the data in my ClickHouse instance.
 Add a P99 latency chart and an error rate breakdown.
 ```
 
+```
+Create a dashboard for the NGINX access logs (ServiceName: nginx-demo).
+Show total requests, error rates, response times, status code breakdown, and top request paths.
+```
+
+> **Tip:** NGINX data has historical timestamps (2025-10-20 to 2025-10-21) — set the UI time range accordingly.
+
 ## Why ClickHouse for Observability
 
 Observability data — logs, traces, metrics — is append-heavy, high-volume, and queried analytically (aggregations, percentiles, GROUP BY). ClickHouse was built for exactly this workload:
