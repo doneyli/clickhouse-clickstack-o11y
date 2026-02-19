@@ -1,6 +1,6 @@
-# Working Dashboard Examples
+# Working Dashboard Examples (v2 API)
 
-All examples use the ClickStack tiles format, deployed via `POST http://localhost:8000/dashboards`. No auth required for local mode.
+All examples use the ClickStack v2 API format, deployed via `POST http://localhost:8000/api/v2/dashboards` with Bearer auth.
 
 ## Tile Patterns
 
@@ -8,45 +8,41 @@ All examples use the ClickStack tiles format, deployed via `POST http://localhos
 
 ```json
 {
-  "id": "total-requests",
-  "x": 0, "y": 0, "w": 6, "h": 2,
-  "config": {
-    "name": "Total Requests",
-    "source": "traces",
-    "select": [{"aggFn": "count", "valueExpression": "", "aggCondition": ""}],
+  "name": "Total Requests",
+  "x": 0, "y": 0, "w": 6, "h": 3,
+  "series": [{
+    "type": "number",
+    "sourceId": "<trace-source-id>",
+    "aggFn": "count",
+    "field": "",
     "where": "",
     "whereLanguage": "lucene",
-    "groupBy": [],
-    "displayType": "number",
     "numberFormat": {
-      "output": "number", "mantissa": 0, "factor": 1,
-      "thousandSeparated": true, "average": false, "decimalBytes": false
+      "output": "number", "mantissa": 0, "thousandSeparated": true
     }
-  }
+  }]
 }
 ```
 
-Note: `valueExpression: ""` for `count` aggFn. Uses the **Integer Count** numberFormat template.
+Note: `field: ""` for `count` aggFn. `sourceId` must be a source ID from `GET /sources`.
 
 ### 2. KPI Avg Latency Tile
 
 ```json
 {
-  "id": "avg-latency",
-  "x": 6, "y": 0, "w": 6, "h": 2,
-  "config": {
-    "name": "Avg Latency",
-    "source": "traces",
-    "select": [{"aggFn": "avg", "valueExpression": "Duration", "aggCondition": ""}],
-    "where": "service:my-service",
+  "name": "Avg Latency",
+  "x": 6, "y": 0, "w": 6, "h": 3,
+  "series": [{
+    "type": "number",
+    "sourceId": "<trace-source-id>",
+    "aggFn": "avg",
+    "field": "Duration",
+    "where": "ServiceName:my-service",
     "whereLanguage": "lucene",
-    "groupBy": [],
-    "displayType": "number",
     "numberFormat": {
-      "output": "number", "mantissa": 2, "factor": 1,
-      "thousandSeparated": true, "average": false, "decimalBytes": false
+      "output": "number", "mantissa": 2, "thousandSeparated": true
     }
-  }
+  }]
 }
 ```
 
@@ -56,17 +52,18 @@ Note: `Duration` is nanoseconds (UInt64). HyperDX UI handles display formatting.
 
 ```json
 {
-  "id": "requests-over-time",
-  "x": 0, "y": 2, "w": 12, "h": 3,
-  "config": {
-    "name": "Requests Over Time",
-    "source": "traces",
-    "select": [{"aggFn": "count", "valueExpression": "", "aggCondition": ""}],
-    "where": "service:my-service",
+  "name": "Requests Over Time",
+  "x": 0, "y": 3, "w": 12, "h": 6,
+  "series": [{
+    "type": "time",
+    "sourceId": "<trace-source-id>",
+    "aggFn": "count",
+    "field": "",
+    "where": "ServiceName:my-service",
     "whereLanguage": "lucene",
     "groupBy": [],
     "displayType": "line"
-  }
+  }]
 }
 ```
 
@@ -74,103 +71,144 @@ Note: `Duration` is nanoseconds (UInt64). HyperDX UI handles display formatting.
 
 ```json
 {
-  "id": "latency-by-service",
-  "x": 0, "y": 5, "w": 12, "h": 3,
-  "config": {
-    "name": "Latency by Service",
-    "source": "traces",
-    "select": [{"aggFn": "avg", "valueExpression": "Duration", "aggCondition": ""}],
+  "name": "Latency by Service",
+  "x": 0, "y": 9, "w": 12, "h": 6,
+  "series": [{
+    "type": "time",
+    "sourceId": "<trace-source-id>",
+    "aggFn": "avg",
+    "field": "Duration",
     "where": "",
     "whereLanguage": "lucene",
-    "groupBy": [{"valueExpression": "ServiceName"}],
+    "groupBy": ["ServiceName"],
     "displayType": "line"
-  }
+  }]
 }
 ```
 
-Note: `groupBy` uses objects `{"valueExpression": "ColumnName"}`, not strings.
+Note: `groupBy` uses plain strings `["ServiceName"]`, not objects.
 
 ### 5. Stacked Bar Chart
 
 ```json
 {
-  "id": "errors-by-service",
-  "x": 12, "y": 2, "w": 12, "h": 3,
-  "config": {
-    "name": "Errors by Service",
-    "source": "logs",
-    "select": [{"aggFn": "count", "valueExpression": "", "aggCondition": ""}],
-    "where": "level:error",
+  "name": "Errors by Service",
+  "x": 12, "y": 3, "w": 12, "h": 6,
+  "series": [{
+    "type": "time",
+    "sourceId": "<log-source-id>",
+    "aggFn": "count",
+    "field": "",
+    "where": "SeverityText:error",
     "whereLanguage": "lucene",
-    "groupBy": [{"valueExpression": "ServiceName"}],
+    "groupBy": ["ServiceName"],
     "displayType": "stacked_bar"
-  }
+  }]
 }
 ```
 
-### 6. Multi-Select Chart (Percentile Lines)
+### 6. Multi-Series Chart (Percentile Lines)
 
 ```json
 {
-  "id": "latency-percentiles",
-  "x": 0, "y": 8, "w": 12, "h": 3,
-  "config": {
-    "name": "Latency Percentiles",
-    "source": "traces",
-    "select": [
-      {"aggFn": "quantile", "level": 0.5, "valueExpression": "Duration", "aggCondition": ""},
-      {"aggFn": "quantile", "level": 0.95, "valueExpression": "Duration", "aggCondition": ""},
-      {"aggFn": "quantile", "level": 0.99, "valueExpression": "Duration", "aggCondition": ""}
-    ],
-    "where": "service:checkout",
-    "whereLanguage": "lucene",
-    "groupBy": [],
-    "displayType": "line"
-  }
+  "name": "Latency Percentiles",
+  "x": 0, "y": 15, "w": 12, "h": 6,
+  "series": [
+    {
+      "type": "time",
+      "sourceId": "<trace-source-id>",
+      "aggFn": "quantile", "level": 0.5,
+      "field": "Duration",
+      "where": "ServiceName:checkout",
+      "whereLanguage": "lucene",
+      "groupBy": [],
+      "displayType": "line"
+    },
+    {
+      "type": "time",
+      "sourceId": "<trace-source-id>",
+      "aggFn": "quantile", "level": 0.95,
+      "field": "Duration",
+      "where": "ServiceName:checkout",
+      "whereLanguage": "lucene",
+      "groupBy": [],
+      "displayType": "line"
+    },
+    {
+      "type": "time",
+      "sourceId": "<trace-source-id>",
+      "aggFn": "quantile", "level": 0.99,
+      "field": "Duration",
+      "where": "ServiceName:checkout",
+      "whereLanguage": "lucene",
+      "groupBy": [],
+      "displayType": "line"
+    }
+  ]
 }
 ```
 
-Note: Use `quantile` + `level` instead of `p50`/`p95`/`p99`.
+Note: Use `quantile` + `level` instead of `p50`/`p95`/`p99`. Each series has its own `where`.
 
-### 7. Multi-Select with aggCondition
+### 7. Multi-Series with Different Filters
 
 ```json
 {
-  "id": "svc-latency-comparison",
-  "x": 12, "y": 8, "w": 12, "h": 3,
-  "config": {
-    "name": "Service Latency Comparison",
-    "source": "traces",
-    "select": [
-      {"aggFn": "avg", "valueExpression": "Duration", "aggCondition": "ServiceName = 'payment'"},
-      {"aggFn": "avg", "valueExpression": "Duration", "aggCondition": "ServiceName = 'cart'"},
-      {"aggFn": "avg", "valueExpression": "Duration", "aggCondition": "ServiceName = 'shipping'"}
-    ],
-    "where": "",
-    "whereLanguage": "lucene",
-    "groupBy": [],
-    "displayType": "line"
-  }
+  "name": "Service Latency Comparison",
+  "x": 12, "y": 15, "w": 12, "h": 6,
+  "series": [
+    {
+      "type": "time",
+      "sourceId": "<trace-source-id>",
+      "aggFn": "avg",
+      "field": "Duration",
+      "where": "ServiceName:payment",
+      "whereLanguage": "lucene",
+      "groupBy": [],
+      "displayType": "line"
+    },
+    {
+      "type": "time",
+      "sourceId": "<trace-source-id>",
+      "aggFn": "avg",
+      "field": "Duration",
+      "where": "ServiceName:cart",
+      "whereLanguage": "lucene",
+      "groupBy": [],
+      "displayType": "line"
+    },
+    {
+      "type": "time",
+      "sourceId": "<trace-source-id>",
+      "aggFn": "avg",
+      "field": "Duration",
+      "where": "ServiceName:shipping",
+      "whereLanguage": "lucene",
+      "groupBy": [],
+      "displayType": "line"
+    }
+  ]
 }
 ```
 
-Note: `aggCondition` provides per-select-item SQL filtering. `where` is shared across all select items.
+Note: In v2, each series has its own `where` — no shared filter or `aggCondition`.
 
 ### 8. Table Tile
 
 ```json
 {
-  "id": "top-operations",
-  "x": 0, "y": 11, "w": 12, "h": 3,
-  "config": {
-    "name": "Top Operations by Count",
-    "source": "traces",
-    "select": [{"aggFn": "count", "valueExpression": "", "aggCondition": ""}],
-    "where": "service:checkout",
+  "name": "Top Operations by Count",
+  "x": 0, "y": 21, "w": 24, "h": 5,
+  "series": [{
+    "type": "table",
+    "sourceId": "<trace-source-id>",
+    "aggFn": "count",
+    "field": "",
+    "where": "ServiceName:checkout",
     "whereLanguage": "lucene",
-    "groupBy": [{"valueExpression": "SpanName"}],
-    "displayType": "table"
-  }
+    "groupBy": ["SpanName"],
+    "sortOrder": "desc"
+  }]
 }
 ```
 
@@ -178,45 +216,73 @@ Note: `aggCondition` provides per-select-item SQL filtering. `where` is shared a
 
 ```json
 {
-  "id": "cpu-utilization",
-  "x": 0, "y": 14, "w": 12, "h": 3,
-  "config": {
-    "name": "CPU Utilization Over Time",
-    "source": "metrics",
-    "select": [{"aggFn": "avg", "valueExpression": "Value", "aggCondition": ""}],
+  "name": "CPU Utilization Over Time",
+  "x": 0, "y": 26, "w": 12, "h": 6,
+  "series": [{
+    "type": "time",
+    "sourceId": "<metric-source-id>",
+    "aggFn": "avg",
+    "field": "Value",
     "where": "",
     "whereLanguage": "lucene",
     "groupBy": [],
     "displayType": "line",
     "metricName": "system.cpu.utilization",
-    "metricDataType": "Gauge"
-  }
+    "metricDataType": "gauge"
+  }]
 }
 ```
 
-Note: Metrics tiles require `metricName` and `metricDataType` in config. `valueExpression` is always `"Value"` for metric aggregation.
+Note: Metrics series require `metricName` and `metricDataType` (lowercase). `field` is always `"Value"` for metric aggregation.
 
 ### 10. Metrics KPI Tile
 
 ```json
 {
-  "id": "avg-memory-usage",
-  "x": 12, "y": 14, "w": 6, "h": 2,
-  "config": {
-    "name": "Avg Memory Usage",
-    "source": "metrics",
-    "select": [{"aggFn": "avg", "valueExpression": "Value", "aggCondition": ""}],
+  "name": "Avg Memory Usage",
+  "x": 12, "y": 26, "w": 6, "h": 3,
+  "series": [{
+    "type": "number",
+    "sourceId": "<metric-source-id>",
+    "aggFn": "avg",
+    "field": "Value",
     "where": "",
     "whereLanguage": "lucene",
-    "groupBy": [],
-    "displayType": "number",
     "metricName": "system.memory.usage",
-    "metricDataType": "Sum",
+    "metricDataType": "sum",
     "numberFormat": {
-      "output": "byte", "mantissa": 0, "factor": 1,
-      "thousandSeparated": true, "average": false, "decimalBytes": true
+      "output": "byte", "mantissa": 0, "thousandSeparated": true, "decimalBytes": true
     }
-  }
+  }]
+}
+```
+
+### 11. Search / Log Viewer Tile
+
+```json
+{
+  "name": "Recent Error Logs",
+  "x": 0, "y": 32, "w": 24, "h": 6,
+  "series": [{
+    "type": "search",
+    "sourceId": "<log-source-id>",
+    "fields": ["Timestamp", "ServiceName", "SeverityText", "Body"],
+    "where": "SeverityText:error",
+    "whereLanguage": "lucene"
+  }]
+}
+```
+
+### 12. Markdown Tile
+
+```json
+{
+  "name": "Section Header",
+  "x": 0, "y": 38, "w": 24, "h": 2,
+  "series": [{
+    "type": "markdown",
+    "content": "## Infrastructure Metrics\nCPU, memory, and network metrics from the container runtime."
+  }]
 }
 ```
 
@@ -226,37 +292,38 @@ Note: Metrics tiles require `metricName` and `metricDataType` in config. `valueE
 import requests
 
 API = 'http://localhost:8000'
+TOKEN = 'clickstack-local-v2-api-key'
+HEADERS = {'Authorization': f'Bearer {TOKEN}'}
 
+# Step 1: Resolve source IDs (mandatory — internal API, no auth)
+sources = requests.get(f'{API}/sources').json()
+SRC = {s['kind']: s['id'] for s in sources}
+# SRC = {"trace": "<id>", "log": "<id>", "metric": "<id>", "session": "<id>"}
+
+# Step 2: Build dashboard (use SRC[kind] for sourceId fields)
 dashboard = {
     'name': 'My Dashboard',
     'tags': ['my-tag'],
-    'tiles': [ ... ]
+    'tiles': [
+        {
+            'name': 'My Chart',
+            'x': 0, 'y': 0, 'w': 12, 'h': 6,
+            'series': [{
+                'type': 'time',
+                'sourceId': SRC['trace'],
+                'aggFn': 'count',
+                'field': '',
+                'where': '',
+                'whereLanguage': 'lucene',
+                'groupBy': [],
+                'displayType': 'line'
+            }]
+        }
+    ]
 }
 
-resp = requests.post(f'{API}/dashboards', json=dashboard)
-data = resp.json()
+# Step 3: Deploy via v2 API
+resp = requests.post(f'{API}/api/v2/dashboards', json=dashboard, headers=HEADERS)
+data = resp.json()['data']
 print(f"URL: http://localhost:8080/dashboards/{data['id']}")
 ```
-
-## Key Differences from v1 Format
-
-| v1 (charts/series) | v2 (tiles/config/select) |
-|--------------------|--------------------------|
-| `charts` array | `tiles` array |
-| `chart.name` | `tile.config.name` |
-| `series[].aggFn` | `select[].aggFn` |
-| `series[].field` (HyperDX name) | `select[].valueExpression` (ClickHouse column) |
-| `series[].where` (per-series) | `config.where` (shared) + `select[].aggCondition` (per-item) |
-| `series[].type: "time"` | `config.displayType: "line"` |
-| `series[].type: "number"` | `config.displayType: "number"` |
-| `series[].type: "table"` | `config.displayType: "table"` |
-| `series[].groupBy: ["field"]` | `config.groupBy: [{"valueExpression": "Col"}]` |
-| `series[].table: "logs"` | `config.source: "traces"` / `"logs"` |
-| `chart.asRatio: false` | Not needed |
-| `dashboard.query: ""` | Not needed |
-| 12-col grid | 24-col grid |
-| `p50`/`p95`/`p99` aggFn | `quantile` + `level` |
-| `field: "duration"` | `valueExpression: "Duration"` |
-| `field: "service"` → groupBy | `groupBy: [{"valueExpression": "ServiceName"}]` |
-| Bearer token auth | No auth (local mode) |
-| `POST /api/v1/dashboards` | `POST /dashboards` |

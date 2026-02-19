@@ -24,7 +24,7 @@ echo ""
 # Step 1: .env file
 # ---------------------------------------------------------------------------
 
-echo "[1/5] Checking .env file..."
+echo "[1/6] Checking .env file..."
 if [ ! -f .env ]; then
     cp .env.example .env
     echo "  Created .env from .env.example"
@@ -36,7 +36,7 @@ fi
 # Step 2: Python virtual environment
 # ---------------------------------------------------------------------------
 
-echo "[2/5] Setting up Python virtual environment..."
+echo "[2/6] Setting up Python virtual environment..."
 if [ ! -d .venv ]; then
     python3 -m venv .venv
     echo "  Created .venv"
@@ -51,7 +51,7 @@ echo "  Dependencies installed"
 # Step 3: Docker Compose
 # ---------------------------------------------------------------------------
 
-echo "[3/5] Starting ClickStack via Docker Compose..."
+echo "[3/6] Starting ClickStack via Docker Compose..."
 docker compose up -d
 echo "  Container started"
 
@@ -59,7 +59,7 @@ echo "  Container started"
 # Step 4: Wait for services
 # ---------------------------------------------------------------------------
 
-echo "[4/5] Waiting for ClickStack UI (port 8080) and ClickHouse (port 8123)..."
+echo "[4/6] Waiting for ClickStack UI (port 8080) and ClickHouse (port 8123)..."
 MAX_WAIT=120
 WAITED=0
 while ! curl -sf http://localhost:8080 > /dev/null 2>&1; do
@@ -88,10 +88,37 @@ done
 echo "  ClickHouse is up"
 
 # ---------------------------------------------------------------------------
-# Step 5: Download and load sample data
+# Step 5: Create v2 API user for dashboard management
 # ---------------------------------------------------------------------------
 
-echo "[5/5] Loading ClickStack e-commerce sample data..."
+echo "[5/6] Setting up v2 API access key..."
+V2_ACCESS_KEY="clickstack-local-v2-api-key"
+TEAM_OID="5f6c6f63616c5f7465616d5f"
+
+docker exec clickstack-local mongo --quiet hyperdx --eval "
+// Create team record if not exists (local mode fakes it in middleware but v2 needs DB record)
+if (db.teams.count({_id: ObjectId('${TEAM_OID}')}) === 0) {
+  db.teams.insert({_id: ObjectId('${TEAM_OID}'), name: 'Local App Team'});
+}
+// Create user with known access key for v2 API auth
+if (db.users.count({email: 'local-user@hyperdx.io'}) === 0) {
+  db.users.insert({
+    email: 'local-user@hyperdx.io',
+    name: 'Local User',
+    team: ObjectId('${TEAM_OID}'),
+    accessKey: '${V2_ACCESS_KEY}',
+    createdAt: new Date(),
+    updatedAt: new Date()
+  });
+}
+" > /dev/null 2>&1
+echo "  v2 API access key: ${V2_ACCESS_KEY}"
+
+# ---------------------------------------------------------------------------
+# Step 6: Download and load sample data
+# ---------------------------------------------------------------------------
+
+echo "[6/6] Loading ClickStack e-commerce sample data..."
 
 # Download if not already present
 if [ ! -f sample.tar.gz ]; then
@@ -125,6 +152,8 @@ echo "============================================================"
 echo ""
 echo "  ClickStack UI:     http://localhost:8080"
 echo "  ClickStack API:    http://localhost:8000"
+echo "  ClickStack v2 API: http://localhost:8000/api/v2/"
+echo "  v2 API Key:        clickstack-local-v2-api-key"
 echo "  ClickHouse HTTP:   http://localhost:8123"
 echo "  OTLP HTTP:         http://localhost:4318"
 echo ""

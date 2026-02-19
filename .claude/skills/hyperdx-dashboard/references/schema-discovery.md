@@ -174,7 +174,7 @@ ORDER BY cnt DESC
 
 ## Source Discovery (API)
 
-ClickStack auto-creates data sources at container startup. Discover them via the API:
+ClickStack auto-creates data sources at container startup. Discover them via the internal API (no auth required):
 
 ```bash
 curl -s http://localhost:8000/sources | python3 -c "
@@ -192,10 +192,17 @@ metric: name=Metrics, table=, id=<dynamic>
 session: name=Sessions, table=hyperdx_sessions, id=<dynamic>
 ```
 
-The `source` string in tile configs maps to these source kinds:
-- `"traces"` → Traces source → `otel_traces`
-- `"logs"` → Logs source → `otel_logs`
-- `"metrics"` → Metrics source → `otel_metrics_*` (routed by `metricDataType`)
+In Python, resolve source IDs for use in v2 API `sourceId` fields:
+```python
+sources = requests.get('http://localhost:8000/sources').json()
+SRC = {s['kind']: s['id'] for s in sources}
+# Use SRC["trace"], SRC["log"], SRC["metric"] as sourceId in series
+```
+
+The `sourceId` in v2 API series maps to these source kinds:
+- `SRC["trace"]` → Traces source → `otel_traces`
+- `SRC["log"]` → Logs source → `otel_logs`
+- `SRC["metric"]` → Metrics source → `otel_metrics_*` (routed by `metricDataType`)
 
 ## Attribute Maps
 

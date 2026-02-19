@@ -31,7 +31,7 @@ All services run inside a single Docker container (`clickstack-local`):
 - **OTel Collector** — receives OTLP on ports 4317 (gRPC) / 4318 (HTTP)
 - **ClickHouse** — stores data in OTel-native tables (port 8123)
 - **HyperDX UI** — port 8080
-- **ClickStack Internal API** — port 8000
+- **ClickStack API** — port 8000 (internal API + v2 API at `/api/v2/`)
 
 Data flow: `sample.tar.gz` → OTLP HTTP (4318) → OTel Collector → ClickHouse → HyperDX UI
 
@@ -56,17 +56,22 @@ The data comes from the [OpenTelemetry Demo](https://opentelemetry.io/docs/demo/
 
 When creating, modifying, or fixing dashboards, **always invoke the `/hyperdx-dashboard` skill**. It encapsulates the complete workflow: discover data via ClickHouse, generate the dashboard JSON, validate against all rules, deploy via the API, and verify in the UI. The skill's reference docs live in `.claude/skills/hyperdx-dashboard/references/`.
 
-### ClickStack Dashboard API
+### ClickStack v2 Dashboard API
 
-No auth required for local mode.
+Bearer auth required. In local mode, use access key `clickstack-local-v2-api-key` (created by `setup.sh`).
 
 ```
-POST   http://localhost:8000/dashboards          # Create dashboard
-GET    http://localhost:8000/dashboards          # List all dashboards
-DELETE http://localhost:8000/dashboards/{id}     # Delete dashboard
+# v2 API (Bearer auth)
+POST   http://localhost:8000/api/v2/dashboards          # Create dashboard
+GET    http://localhost:8000/api/v2/dashboards          # List all dashboards
+GET    http://localhost:8000/api/v2/dashboards/{id}     # Get dashboard
+DELETE http://localhost:8000/api/v2/dashboards/{id}     # Delete dashboard
+
+# Source discovery (internal API, no auth)
+GET    http://localhost:8000/sources                     # List data sources
 ```
 
-### Dashboard JSON format (tiles)
+### Dashboard JSON format (v2 API)
 
 ```json
 {
@@ -74,45 +79,46 @@ DELETE http://localhost:8000/dashboards/{id}     # Delete dashboard
   "tags": [],
   "tiles": [
     {
-      "id": "unique-kebab-id",
-      "x": 0, "y": 0, "w": 12, "h": 3,
-      "config": {
-        "name": "Chart Title",
-        "source": "traces",
-        "select": [{
-          "aggFn": "avg",
-          "valueExpression": "Duration",
-          "aggCondition": ""
-        }],
-        "where": "service:my-service",
+      "name": "Chart Title",
+      "x": 0, "y": 0, "w": 12, "h": 6,
+      "series": [{
+        "type": "time",
+        "sourceId": "<source-id-from-GET-/sources>",
+        "aggFn": "avg",
+        "field": "Duration",
+        "where": "ServiceName:my-service",
         "whereLanguage": "lucene",
-        "groupBy": [{"valueExpression": "ServiceName"}],
+        "groupBy": ["ServiceName"],
         "displayType": "line"
-      }
+      }]
     }
   ]
 }
 ```
 
 Key rules:
-- **`tiles` array** with **`config`** containing **`select`** (NOT `charts`/`series`)
-- **`source`**: `"traces"`, `"logs"`, or `"metrics"`
-- **`select`** items: `aggFn` + `valueExpression` (ClickHouse column) + `aggCondition`
-- **`where` uses Lucene syntax** with `whereLanguage: "lucene"` required
-- **`groupBy`** is objects: `[{"valueExpression": "ColumnName"}]` (NOT strings)
+- **`tiles`** array with **`series`** (NOT `config.select[]`)
+- **`sourceId`** per-series: Must be a **source ID** from `GET http://localhost:8000/sources` (NOT a kind string like `"traces"`)
+  - Resolve: `SRC = {s['kind']: s['id'] for s in requests.get(f'{API}/sources').json()}`
+  - Use: `SRC["trace"]`, `SRC["log"]`, `SRC["metric"]`
+- **Series `type`**: `time`, `number`, `table`, `search`, `markdown` — discriminated union
+- **`field`**: ClickHouse column name (`Duration`, `ServiceName`). Empty or omit for `count`.
+- **`where`** per-series: Lucene syntax with `whereLanguage: "lucene"`
+- **`groupBy`** is **string array**: `["ServiceName"]` (NOT objects). Only on `time`/`table`.
+- **`displayType`**: Only on `time` series (`"line"` or `"stacked_bar"`)
 - **Grid is 24 columns wide** — `x + w <= 24`
-- **`tags: []`** required at dashboard level
-- Valid `aggFn`: count, sum, avg, min, max, count_distinct, last_value, quantile (with level)
-- Valid `displayType`: line, stacked_bar, number, table, markdown
-- **For metrics:** add `metricName` and `metricDataType` to config
+- **Heights:** `h: 3` for number (KPI), `h: 6` for time, `h: 5` for table
+- Valid `aggFn`: count, sum, avg, min, max, count_distinct, last_value, quantile (with level), any, none
+- **For metrics:** add `metricName` and `metricDataType` (lowercase: `gauge`, `sum`, `histogram`, `summary`)
 - **Quantile** replaces p50/p90/p95/p99: use `aggFn: "quantile"` with `level: 0.95`
 
 ## Critical Gotchas
 
 - **`otel_traces`** stores spans. **`otel_logs`** stores logs. **`otel_metrics_*`** stores metrics.
 - **`Duration` is nanoseconds** — UInt64 in `otel_traces`. HyperDX UI handles display formatting.
-- **`valueExpression` uses ClickHouse column names** — `Duration`, `ServiceName`, `SpanName` (NOT HyperDX names like `duration`, `service`).
-- **Lucene `where` still uses HyperDX field names** — `service:X`, `span_name:X`, `level:error` (HyperDX maps these to column expressions).
+- **`field` uses ClickHouse column names** — `Duration`, `ServiceName`, `SpanName` (NOT HyperDX names like `duration`, `service`).
+- **Lucene `where` uses ClickHouse column names directly** — `ServiceName:X`, `SpanName:X`, `SeverityText:error`, `Body:"text"`. HyperDX-mapped names like `service`, `level`, `span_name` do NOT work (fails with "Unknown identifier").
+- **Map properties use dot notation in Lucene** — `LogAttributes.key:value`, `SpanAttributes.key:value`.
 - **NEVER use `type:span` or `type:log` in Lucene `where` clauses** — not searchable, silently returns 0 rows.
 - **ClickHouse access from outside** uses `user=api&password=api` — the `default` user is restricted to localhost inside the container.
 
@@ -120,20 +126,22 @@ Key rules:
 
 ### `otel_traces`
 
-| Column | Type | Lucene field |
-|--------|------|-------------|
-| `ServiceName` | LowCardinality(String) | `service` |
-| `SpanName` | LowCardinality(String) | `span_name` |
-| `Duration` | UInt64 (nanoseconds) | `duration` |
-| `StatusCode` | LowCardinality(String) | — |
-| `SpanAttributes` | Map(String, String) | attribute name directly |
+Lucene `where` uses ClickHouse column names directly (NOT HyperDX-mapped names).
+
+| Column | Type | Lucene `where` usage |
+|--------|------|---------------------|
+| `ServiceName` | LowCardinality(String) | `ServiceName:value` |
+| `SpanName` | LowCardinality(String) | `SpanName:value` |
+| `Duration` | UInt64 (nanoseconds) | `Duration:>1000000` |
+| `StatusCode` | LowCardinality(String) | `StatusCode:value` |
+| `SpanAttributes` | Map(String, String) | `SpanAttributes.key:value` (dot notation) |
 | `ResourceAttributes` | Map(String, String) | — |
 
 ### `otel_logs`
 
-| Column | Type | Lucene field |
-|--------|------|-------------|
-| `ServiceName` | LowCardinality(String) | `service` |
-| `SeverityText` | LowCardinality(String) | `level` |
-| `Body` | String | `body` |
-| `LogAttributes` | Map(String, String) | attribute name directly |
+| Column | Type | Lucene `where` usage |
+|--------|------|---------------------|
+| `ServiceName` | LowCardinality(String) | `ServiceName:value` |
+| `SeverityText` | LowCardinality(String) | `SeverityText:error` |
+| `Body` | String | `Body:"search text"` |
+| `LogAttributes` | Map(String, String) | `LogAttributes.key:value` (dot notation) |
