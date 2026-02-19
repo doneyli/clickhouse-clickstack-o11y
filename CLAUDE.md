@@ -60,7 +60,7 @@ Query ClickHouse directly to discover available services and attributes.
 
 ### Use the `/hyperdx-dashboard` skill
 
-When creating, modifying, or fixing dashboards, **always invoke the `/hyperdx-dashboard` skill**. It encapsulates the complete workflow: discover data via ClickHouse, generate the dashboard JSON, validate against all rules, deploy via the API, and verify in the UI. The skill's reference docs live in `.claude/skills/hyperdx-dashboard/references/`.
+When creating, modifying, or fixing dashboards, **always invoke the `/hyperdx-dashboard` skill**. It encapsulates the complete workflow: discover data via ClickHouse, generate the dashboard JSON, validate against all rules, deploy via the API, and verify in the UI. The skill's reference docs live in `skills/hyperdx-dashboard/references/`.
 
 ### ClickStack v2 Dashboard API
 
