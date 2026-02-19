@@ -1,6 +1,11 @@
 ---
 name: hyperdx-dashboard
 description: Generates, validates, and deploys ClickStack dashboard definitions via the v2 API. Covers tile layout, series types, Lucene filters, and OTel-native schema discovery. Use when creating, modifying, or fixing dashboards.
+license: Apache-2.0
+compatibility: Requires a running ClickStack instance (Docker) with API access on port 8000 and ClickHouse on port 8123.
+metadata:
+  author: doneyli
+  version: "1.0.0"
 ---
 
 # ClickStack Dashboard Builder (v2 API)

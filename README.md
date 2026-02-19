@@ -44,7 +44,7 @@ Two data sources:
 
 ### How the AI Skill Works
 
-The `/hyperdx-dashboard` [Claude Code skill](https://code.claude.com/docs/en/skills) codifies the entire dashboard creation workflow into a repeatable, validated process:
+The `hyperdx-dashboard` [agent skill](https://agentskills.io/) codifies the entire dashboard creation workflow into a repeatable, validated process:
 
 ```
 Natural language prompt
@@ -56,7 +56,7 @@ Natural language prompt
   2. GENERATE ──> Build dashboard JSON (tiles, series, Lucene filters)
         |
         v
-  3. VALIDATE ──> Check against 21-rule checklist
+  3. VALIDATE ──> Check against 24-rule checklist
         |          (catches hallucinated fields, wrong syntax, grid overflow)
         |
         v
@@ -68,7 +68,7 @@ Natural language prompt
 
 The key insight: the skill queries the database *first* to ground the LLM in real data, then validates *after* generation against a strict checklist. This is **deterministic and validated**, not guess-and-pray. Hallucinated field names, invalid aggregation functions, and SQL-in-Lucene-fields are all caught before deployment.
 
-The skill definition lives in `.claude/skills/hyperdx-dashboard/` with reference docs for the tile format, ClickHouse schema, validation rules, and working examples.
+The skill follows the [Agent Skills specification](https://agentskills.io/specification) and lives in `skills/hyperdx-dashboard/` with reference docs for the tile format, ClickHouse schema, validation rules, and working examples. It works with any supported AI coding agent — see [Install the skill](#install-the-skill) below.
 
 ## Quick Start
 
@@ -76,7 +76,7 @@ The skill definition lives in `.claude/skills/hyperdx-dashboard/` with reference
 
 - [Docker](https://docs.docker.com/get-docker/) (must be running)
 - Python 3.9+
-- [Claude Code](https://code.claude.com/docs/en/overview) (for AI dashboard creation — the `/hyperdx-dashboard` skill is a Claude Code-specific skill defined in `.claude/`)
+- An AI coding agent ([Claude Code](https://code.claude.com/docs/en/overview), [Cursor](https://www.cursor.com/), [Windsurf](https://codeium.com/windsurf), [GitHub Copilot](https://github.com/features/copilot), or [any supported agent](https://agentskills.io/))
 
 Verify prerequisites before starting:
 
@@ -113,6 +113,18 @@ curl -s "http://localhost:8123/?user=api&password=api" \
 ```
 
 If you see services and counts > 0, setup succeeded. If you get a connection error, check that Docker is running and the container is up (`docker compose ps`).
+
+### Install the skill
+
+The `hyperdx-dashboard` skill teaches your AI coding agent how to create, validate, and deploy ClickStack dashboards. Install it with the [Agent Skills CLI](https://github.com/vercel-labs/skills):
+
+```bash
+npx skills add doneyli/clickhouse-clickstack-o11y
+```
+
+The CLI auto-detects which AI agents you have installed (Claude Code, Cursor, Windsurf, GitHub Copilot, Cline, etc.) and installs the skill into each one.
+
+> **Claude Code users:** If you cloned this repo, the skill is already auto-discovered via the symlink at `.claude/skills/hyperdx-dashboard` — no extra installation needed.
 
 ### Try it
 
@@ -260,8 +272,10 @@ Observability data — logs, traces, metrics — is append-heavy, high-volume, a
 ├── create_metrics_dashboard.py   # Pre-built metrics dashboard
 ├── cleanup_dashboards.sh         # Delete all dashboards
 ├── demo-script.md                # Step-by-step demo walkthrough
+├── skills/                       # Agent skills (agentskills.io spec)
+│   └── hyperdx-dashboard/        #   Dashboard builder skill + references
 ├── CLAUDE.md                     # Instructions for Claude Code
-├── .claude/                      # Claude Code skills and references
+├── .claude/                      # Claude Code config (symlinks to skills/)
 └── tests/                        # Dashboard skill test cases
 ```
 
