@@ -53,7 +53,7 @@ Natural language prompt
   1. DISCOVER ──> Query ClickHouse for services, attributes, metrics
         |
         v
-  2. GENERATE ──> Build dashboard JSON (tiles, select, Lucene filters)
+  2. GENERATE ──> Build dashboard JSON (tiles, series, Lucene filters)
         |
         v
   3. VALIDATE ──> Check against 21-rule checklist
@@ -306,29 +306,42 @@ python stream_data.py --logs --metrics # Logs + metrics only
 
 ### Direct API Usage
 
-Dashboards are created via the ClickStack REST API. No auth required for local mode.
+Dashboards are created via the ClickStack v2 REST API. Bearer auth required — use `clickstack-local-v2-api-key` (created by `setup.sh`).
 
 ```bash
+# List dashboards
+curl -H "Authorization: Bearer clickstack-local-v2-api-key" \
+  http://localhost:8000/api/v2/dashboards
+
 # Create a dashboard
-curl -X POST http://localhost:8000/dashboards \
+curl -X POST http://localhost:8000/api/v2/dashboards \
+  -H "Authorization: Bearer clickstack-local-v2-api-key" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "My Dashboard",
     "tags": [],
     "tiles": [{
-      "id": "request-rate",
-      "x": 0, "y": 0, "w": 12, "h": 3,
-      "config": {
-        "name": "Request Rate",
-        "source": "traces",
-        "select": [{"aggFn": "count", "valueExpression": "", "aggCondition": ""}],
+      "name": "Request Rate",
+      "x": 0, "y": 0, "w": 12, "h": 6,
+      "series": [{
+        "type": "time",
+        "sourceId": "<source-id-from-GET-/sources>",
+        "aggFn": "count",
+        "field": "",
         "where": "",
         "whereLanguage": "lucene",
-        "groupBy": [{"valueExpression": "ServiceName"}],
+        "groupBy": ["ServiceName"],
         "displayType": "line"
-      }
+      }]
     }]
   }'
+
+# Discover source IDs (needed for sourceId field)
+curl -s http://localhost:8000/sources | python3 -c "
+import sys, json
+for s in json.load(sys.stdin):
+    print(f'{s[\"kind\"]}: {s[\"id\"]}')
+"
 ```
 
 ### Troubleshooting

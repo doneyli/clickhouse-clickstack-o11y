@@ -18,8 +18,14 @@ description: Generates, validates, and deploys ClickStack dashboard definitions 
    # Discover trace attributes
    curl -s "http://localhost:8123/?user=api&password=api" --data "SELECT DISTINCT arrayJoin(SpanAttributes.keys) AS attr FROM otel_traces ORDER BY attr LIMIT 100"
 
+   # Discover log services (includes nginx-demo)
+   curl -s "http://localhost:8123/?user=api&password=api" --data "SELECT ServiceName, count() AS cnt FROM otel_logs GROUP BY ServiceName ORDER BY cnt DESC"
+
    # Discover log attributes
    curl -s "http://localhost:8123/?user=api&password=api" --data "SELECT DISTINCT arrayJoin(LogAttributes.keys) AS attr FROM otel_logs ORDER BY attr LIMIT 100"
+
+   # Discover NGINX log attributes (if working with nginx-demo data)
+   curl -s "http://localhost:8123/?user=api&password=api" --data "SELECT DISTINCT arrayJoin(LogAttributes.keys) AS attr FROM otel_logs WHERE ServiceName = 'nginx-demo' ORDER BY attr"
 
    # Discover metrics
    curl -s "http://localhost:8123/?user=api&password=api" --data "SELECT DISTINCT MetricName FROM otel_metrics_gauge UNION ALL SELECT DISTINCT MetricName FROM otel_metrics_sum ORDER BY MetricName"

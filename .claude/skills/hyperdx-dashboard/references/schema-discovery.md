@@ -172,6 +172,23 @@ GROUP BY SeverityText
 ORDER BY cnt DESC
 ```
 
+### NGINX log attributes (ServiceName: nginx-demo)
+```sql
+SELECT DISTINCT arrayJoin(LogAttributes.keys) AS attr_key
+FROM otel_logs
+WHERE ServiceName = 'nginx-demo'
+ORDER BY attr_key
+```
+
+### NGINX status code distribution
+```sql
+SELECT LogAttributes['status'] AS status, count() AS cnt
+FROM otel_logs
+WHERE ServiceName = 'nginx-demo'
+GROUP BY status
+ORDER BY cnt DESC
+```
+
 ## Source Discovery (API)
 
 ClickStack auto-creates data sources at container startup. Discover them via the internal API (no auth required):

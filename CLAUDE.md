@@ -156,13 +156,17 @@ Lucene `where` uses ClickHouse column names directly (NOT HyperDX-mapped names).
 
 NGINX access logs are stored in `otel_logs` with `ServiceName = 'nginx-demo'`. Key attributes in `LogAttributes`:
 
-| Attribute Key | Example Value | Lucene `where` usage |
-|---------------|---------------|---------------------|
-| `status` | `200`, `404`, `500` | `LogAttributes.status:200` |
-| `request_method` | `GET`, `POST` | `LogAttributes.request_method:GET` |
-| `request_uri` | `/api/products` | `LogAttributes.request_uri:"/api/products"` |
-| `remote_addr` | `192.168.1.1` | `LogAttributes.remote_addr:192.168.1.1` |
-| `upstream_response_time` | `0.015` | field: `LogAttributes['upstream_response_time']` |
+| Attribute Key | Example Value | Usage |
+|---------------|---------------|-------|
+| `status` | `200`, `404`, `500` | Lucene: `LogAttributes.status:200`, groupBy: `LogAttributes['status']` |
+| `request` | `GET /api/orders HTTP/1.1` | Combined method+path+protocol. groupBy: `LogAttributes['request']` |
+| `remote_addr` | `192.168.1.1` | Lucene: `LogAttributes.remote_addr:192.168.1.1` |
+| `upstream_response_time` | `0.937` | field: `LogAttributes['upstream_response_time']` (seconds, as string) |
+| `request_time` | `1.172` | field: `LogAttributes['request_time']` (seconds, as string) |
 | `body_bytes_sent` | `1234` | field: `LogAttributes['body_bytes_sent']` |
-| `request_time` | `0.016` | field: `LogAttributes['request_time']` |
-| `source` | `nginx-demo` | `LogAttributes.source:nginx-demo` |
+| `http_host` | `example.com` | Lucene: `LogAttributes.http_host:example.com` |
+| `http_user_agent` | `Mozilla/5.0 ...` | Lucene: `LogAttributes.http_user_agent:Mozilla*` |
+| `http_referer` | `https://example.com/` | Lucene: `LogAttributes.http_referer:value` |
+| `source` | `nginx-demo` | Set by OTel config. Lucene: `LogAttributes.source:nginx-demo` |
+
+**Note:** There are no separate `request_method` or `request_uri` fields — the `request` field contains the combined value (e.g., `GET /path HTTP/1.1`).
