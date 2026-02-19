@@ -1,6 +1,6 @@
 # ClickStack Observability Demo
 
-AI-powered dashboard creation for ClickHouse observability, using [Claude Code](https://code.claude.com/docs/en/overview) + [ClickStack](https://clickhouse.com/docs/use-cases/observability/clickstack).
+AI-powered dashboard creation for ClickHouse observability using [ClickStack](https://clickhouse.com/docs/use-cases/observability/clickstack) and any AI coding agent via the [Agent Skills](https://agentskills.io/) standard.
 
 ## The Problem
 
@@ -249,7 +249,7 @@ Observability data — logs, traces, metrics — is append-heavy, high-volume, a
 
 **Frictionless Migration** — Screenshot-to-dashboard turns months of vendor migration into an afternoon. Take a screenshot of your Datadog/Grafana dashboard, paste it, and get a working replica on ClickHouse.
 
-**Deterministic Validation vs. Hallucination** — The AI queries the database first to discover what actually exists, then validates its output against a 21-rule checklist. Hallucinated fields, wrong syntax, and invalid layouts are caught before deployment — not after.
+**Deterministic Validation vs. Hallucination** — The AI queries the database first to discover what actually exists, then validates its output against a 24-rule checklist. Hallucinated fields, wrong syntax, and invalid layouts are caught before deployment — not after.
 
 ---
 
