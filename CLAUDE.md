@@ -9,7 +9,7 @@ ClickStack Sample Data Demo — loads the [ClickStack e-commerce sample data](ht
 ## Setup & Common Commands
 
 ```bash
-./setup.sh                                    # Full idempotent setup (5 steps)
+./setup.sh                                    # Full idempotent setup (7 steps)
 source .venv/bin/activate                     # Activate Python venv (created by setup.sh)
 docker compose up -d                          # Start ClickStack container
 ```
@@ -33,7 +33,9 @@ All services run inside a single Docker container (`clickstack-local`):
 - **HyperDX UI** — port 8080
 - **ClickStack API** — port 8000 (internal API + v2 API at `/api/v2/`)
 
-Data flow: `sample.tar.gz` → OTLP HTTP (4318) → OTel Collector → ClickHouse → HyperDX UI
+Data flow:
+- E-commerce: `sample.tar.gz` → OTLP HTTP (4318) → OTel Collector → ClickHouse → HyperDX UI
+- NGINX: `access.log` → `filelog` receiver (via `nginx-demo.yaml`) → OTel Collector → ClickHouse
 
 ### ClickHouse Tables
 
@@ -48,7 +50,11 @@ Data flow: `sample.tar.gz` → OTLP HTTP (4318) → OTel Collector → ClickHous
 
 ### Sample Data
 
-The data comes from the [OpenTelemetry Demo](https://opentelemetry.io/docs/demo/) — a simulated e-commerce store with microservices. It includes traces, logs, and metrics. Query ClickHouse directly to discover available services and attributes.
+Two data sources:
+- **E-commerce (OTel Demo)** — from the [OpenTelemetry Demo](https://opentelemetry.io/docs/demo/), ~15 microservices generating traces, logs, and metrics. Loaded via OTLP by `setup.sh`.
+- **NGINX access logs** — ~14,742 JSON log lines from the [ClickStack NGINX integration](https://clickhouse.com/docs/use-cases/observability/clickstack/integrations/nginx). Ingested via `filelog` receiver using custom OTel Collector config (`nginx-demo.yaml`). Appears as `ServiceName: nginx-demo` in `otel_logs`. Historical timestamps: 2025-10-20 to 2025-10-21.
+
+Query ClickHouse directly to discover available services and attributes.
 
 ## Dashboard Creation
 
@@ -145,3 +151,18 @@ Lucene `where` uses ClickHouse column names directly (NOT HyperDX-mapped names).
 | `SeverityText` | LowCardinality(String) | `SeverityText:error` |
 | `Body` | String | `Body:"search text"` |
 | `LogAttributes` | Map(String, String) | `LogAttributes.key:value` (dot notation) |
+
+#### NGINX Log Attributes (`ServiceName: nginx-demo`)
+
+NGINX access logs are stored in `otel_logs` with `ServiceName = 'nginx-demo'`. Key attributes in `LogAttributes`:
+
+| Attribute Key | Example Value | Lucene `where` usage |
+|---------------|---------------|---------------------|
+| `status` | `200`, `404`, `500` | `LogAttributes.status:200` |
+| `request_method` | `GET`, `POST` | `LogAttributes.request_method:GET` |
+| `request_uri` | `/api/products` | `LogAttributes.request_uri:"/api/products"` |
+| `remote_addr` | `192.168.1.1` | `LogAttributes.remote_addr:192.168.1.1` |
+| `upstream_response_time` | `0.015` | field: `LogAttributes['upstream_response_time']` |
+| `body_bytes_sent` | `1234` | field: `LogAttributes['body_bytes_sent']` |
+| `request_time` | `0.016` | field: `LogAttributes['request_time']` |
+| `source` | `nginx-demo` | `LogAttributes.source:nginx-demo` |

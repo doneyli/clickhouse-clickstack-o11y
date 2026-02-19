@@ -24,7 +24,7 @@ echo ""
 # Step 1: .env file
 # ---------------------------------------------------------------------------
 
-echo "[1/6] Checking .env file..."
+echo "[1/7] Checking .env file..."
 if [ ! -f .env ]; then
     cp .env.example .env
     echo "  Created .env from .env.example"
@@ -36,7 +36,7 @@ fi
 # Step 2: Python virtual environment
 # ---------------------------------------------------------------------------
 
-echo "[2/6] Setting up Python virtual environment..."
+echo "[2/7] Setting up Python virtual environment..."
 if [ ! -d .venv ]; then
     python3 -m venv .venv
     echo "  Created .venv"
@@ -48,18 +48,30 @@ pip install -q -r requirements.txt
 echo "  Dependencies installed"
 
 # ---------------------------------------------------------------------------
-# Step 3: Docker Compose
+# Step 3: Download NGINX access log
 # ---------------------------------------------------------------------------
 
-echo "[3/6] Starting ClickStack via Docker Compose..."
+echo "[3/7] Downloading NGINX access log..."
+if [ ! -f access.log ]; then
+    curl -O https://datasets-documentation.s3.eu-west-3.amazonaws.com/clickstack-integrations/access.log
+    echo "  Downloaded access.log"
+else
+    echo "  access.log already exists, skipping download"
+fi
+
+# ---------------------------------------------------------------------------
+# Step 4: Docker Compose
+# ---------------------------------------------------------------------------
+
+echo "[4/7] Starting ClickStack via Docker Compose..."
 docker compose up -d
 echo "  Container started"
 
 # ---------------------------------------------------------------------------
-# Step 4: Wait for services
+# Step 5: Wait for services
 # ---------------------------------------------------------------------------
 
-echo "[4/6] Waiting for ClickStack UI (port 8080) and ClickHouse (port 8123)..."
+echo "[5/7] Waiting for ClickStack UI (port 8080) and ClickHouse (port 8123)..."
 MAX_WAIT=120
 WAITED=0
 while ! curl -sf http://localhost:8080 > /dev/null 2>&1; do
@@ -88,10 +100,10 @@ done
 echo "  ClickHouse is up"
 
 # ---------------------------------------------------------------------------
-# Step 5: Create v2 API user for dashboard management
+# Step 6: Create v2 API user for dashboard management
 # ---------------------------------------------------------------------------
 
-echo "[5/6] Setting up v2 API access key..."
+echo "[6/7] Setting up v2 API access key..."
 V2_ACCESS_KEY="clickstack-local-v2-api-key"
 TEAM_OID="5f6c6f63616c5f7465616d5f"
 
@@ -115,10 +127,10 @@ if (db.users.count({email: 'local-user@hyperdx.io'}) === 0) {
 echo "  v2 API access key: ${V2_ACCESS_KEY}"
 
 # ---------------------------------------------------------------------------
-# Step 6: Download and load sample data
+# Step 7: Download and load sample data
 # ---------------------------------------------------------------------------
 
-echo "[6/6] Loading ClickStack e-commerce sample data..."
+echo "[7/7] Loading ClickStack e-commerce sample data..."
 
 # Download if not already present
 if [ ! -f sample.tar.gz ]; then

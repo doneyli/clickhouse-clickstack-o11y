@@ -32,13 +32,15 @@ Everything runs inside a single Docker container (`clickstack-local`):
 
 ```
 sample.tar.gz ──> OTLP HTTP (:4318) ──> OTel Collector ──> ClickHouse ──> HyperDX UI (:8080)
-                                                              |
-                                                         otel_traces (spans)
-                                                         otel_logs (logs)
-                                                         otel_metrics_* (metrics)
+                                              ^                |
+access.log ──> filelog receiver ──────────────┘           otel_traces (spans)
+  (NGINX)                                                 otel_logs (logs + nginx)
+                                                          otel_metrics_* (metrics)
 ```
 
-The sample data comes from the [OpenTelemetry Demo](https://opentelemetry.io/docs/demo/) — a simulated e-commerce store with ~15 microservices generating traces, logs, and metrics.
+Two data sources:
+- **E-commerce sample data** — from the [OpenTelemetry Demo](https://opentelemetry.io/docs/demo/), ~15 microservices generating traces, logs, and metrics via OTLP.
+- **NGINX access logs** — ~14,742 JSON log lines from the [ClickStack NGINX integration](https://clickhouse.com/docs/use-cases/observability/clickstack/integrations/nginx), ingested via the OTel Collector's `filelog` receiver. Appears as `ServiceName: nginx-demo` in ClickHouse.
 
 ### How the AI Skill Works
 
@@ -95,9 +97,11 @@ cd clickhouse-clickstack-o11y
 
 1. Creates `.env` from `.env.example`
 2. Sets up a Python virtualenv and installs dependencies
-3. Starts the ClickStack container via Docker Compose
-4. Waits for ClickStack UI (port 8080) and ClickHouse (port 8123) to be ready
-5. Downloads and loads the e-commerce sample data via OTLP
+3. Downloads the NGINX access log sample data
+4. Starts the ClickStack container via Docker Compose (with custom OTel Collector config for NGINX)
+5. Waits for ClickStack UI (port 8080) and ClickHouse (port 8123) to be ready
+6. Creates the v2 API access key
+7. Downloads and loads the e-commerce sample data via OTLP
 
 ### Verify setup
 
@@ -116,11 +120,14 @@ Deploy a pre-built dashboard and optionally start streaming live data:
 
 ```bash
 source .venv/bin/activate
-python deploy_checkout_dashboard.py                # Deploy a pre-built dashboard
+python deploy_checkout_dashboard.py                # Deploy e-commerce checkout dashboard
+python deploy_nginx_dashboard.py                   # Deploy NGINX access log dashboard
 python stream_data.py --cycle 60 &                 # Optional: replay data with live timestamps
 ```
 
 > **Note:** `stream_data.py` is optional. The sample data loaded by `setup.sh` is already in ClickHouse — streaming just adds continuously updating timestamps for Live Tail and time-range charts.
+>
+> **Note:** The NGINX access log data has historical timestamps (2025-10-20 to 2025-10-21). Set the UI time range to that period to see NGINX data in charts.
 
 Open **http://localhost:8080** and go to the Dashboards tab. To create a dashboard with AI instead, open Claude Code in this directory and try:
 
@@ -158,8 +165,9 @@ docker compose up -d
 source .venv/bin/activate
 python stream_data.py --cycle 60 &     # Replay data with live timestamps (1-min cycles)
 
-# Deploy a pre-built dashboard
+# Deploy pre-built dashboards
 python deploy_checkout_dashboard.py
+python deploy_nginx_dashboard.py
 
 # Clean up between demo runs
 ./cleanup_dashboards.sh --force
@@ -234,11 +242,14 @@ Observability data — logs, traces, metrics — is append-heavy, high-volume, a
 .
 ├── setup.sh                      # One-command setup (idempotent)
 ├── docker-compose.yaml           # ClickStack Local container
+├── nginx-demo.yaml               # Custom OTel Collector config for NGINX logs
 ├── .env.example                  # Environment template
 ├── requirements.txt              # Python dependencies
 ├── sample.tar.gz                 # E-commerce sample data (downloaded by setup.sh)
+├── access.log                    # NGINX access log sample (downloaded by setup.sh)
 ├── stream_data.py                # Live data streamer (timestamp rewriting)
 ├── deploy_checkout_dashboard.py  # Pre-built checkout dashboard
+├── deploy_nginx_dashboard.py     # Pre-built NGINX access log dashboard
 ├── create_metrics_dashboard.py   # Pre-built metrics dashboard
 ├── cleanup_dashboards.sh         # Delete all dashboards
 ├── demo-script.md                # Step-by-step demo walkthrough
@@ -268,13 +279,17 @@ curl -s "http://localhost:8123/?user=api&password=api" --data "SELECT count() FR
 # From inside the container
 docker exec clickstack-local clickhouse-client --query "SELECT count() FROM otel_traces"
 
-# Discover services
+# Discover services (traces)
 curl -s "http://localhost:8123/?user=api&password=api" \
   --data "SELECT ServiceName, count() AS cnt FROM otel_traces GROUP BY ServiceName ORDER BY cnt DESC"
 
-# Discover span attributes
+# Discover services (logs — includes nginx-demo)
 curl -s "http://localhost:8123/?user=api&password=api" \
-  --data "SELECT DISTINCT arrayJoin(SpanAttributes.keys) AS attr FROM otel_traces ORDER BY attr LIMIT 50"
+  --data "SELECT ServiceName, count() AS cnt FROM otel_logs GROUP BY ServiceName ORDER BY cnt DESC"
+
+# Discover NGINX log attributes
+curl -s "http://localhost:8123/?user=api&password=api" \
+  --data "SELECT DISTINCT arrayJoin(LogAttributes.keys) FROM otel_logs WHERE ServiceName = 'nginx-demo' ORDER BY 1"
 ```
 
 ### Streaming Options

@@ -8,6 +8,8 @@ services:
       - "4318:4318"   # OTLP HTTP
       - "8123:8123"   # ClickHouse HTTP (for direct SQL queries)
       - "8000:8000"   # ClickStack internal API
+    environment:
+      - CUSTOM_OTELCOL_CONFIG_FILE=/etc/otelcol-contrib/custom.config.yaml
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8123/ping"]
@@ -18,6 +20,8 @@ services:
     volumes:
       - clickstack-data:/var/lib/clickhouse
       - clickstack-db:/data/db
+      - ./nginx-demo.yaml:/etc/otelcol-contrib/custom.config.yaml:ro
+      - ./access.log:/tmp/nginx-demo/access.log:ro
 
 volumes:
   clickstack-data:

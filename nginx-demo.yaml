@@ -1,0 +1,28 @@
+# Custom OTel Collector config for NGINX access log ingestion.
+# Mounted via CUSTOM_OTELCOL_CONFIG_FILE in docker-compose.yaml.
+# The ClickStack entrypoint merges this into the base collector config.
+
+receivers:
+  filelog:
+    include: [/tmp/nginx-demo/access.log]
+    start_at: beginning
+    operators:
+      - type: json_parser
+        parse_from: body
+        parse_to: attributes
+      - type: time_parser
+        parse_from: attributes.time_local
+        layout: '%d/%b/%Y:%H:%M:%S %z'
+      - type: add
+        field: resource["service.name"]
+        value: "nginx-demo"
+      - type: add
+        field: attributes.source
+        value: "nginx-demo"
+
+service:
+  pipelines:
+    logs/nginx-demo:
+      receivers: [filelog]
+      processors: [memory_limiter, transform, batch]
+      exporters: [clickhouse]
